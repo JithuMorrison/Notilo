@@ -37,7 +37,6 @@ body {
   overflow: hidden;
 }
 
-/* Sidebar Styles */
 .sidebar {
   width: 280px;
   background: var(--sidebar-bg);
