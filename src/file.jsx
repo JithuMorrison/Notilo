@@ -253,7 +253,11 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
         return (
           <div className="block-list">
             {listContent.map((item, i) => (
-              <div key={i} className="list-item">
+              <div
+                key={i}
+                className="list-item"
+                style={{ marginBottom: i !== listContent.length - 1 ? '1rem' : '0rem' }}
+              >
                 {editMode ? (
                   <>
                     <input
@@ -278,7 +282,7 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
   };
 
   return (
-    <div className="block">
+    <div className="block" style={{marginBottom: editMode ? '1.5rem' : '0.2rem',}}>
       {editMode && (
         <div className="block-toolbar">
           <select
