@@ -6,15 +6,17 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   const [fileName, setFileName] = useState('');
   const [blocks, setBlocks] = useState([]);
   const [isEditingName, setIsEditingName] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
     if (selectedFile) {
       setFileName(selectedFile.name);
-      setBlocks(selectedFile.content);
+      setBlocks(selectedFile.content || []);
     } else {
       setFileName('');
       setBlocks([]);
     }
+    setEditMode(false); // Reset edit mode when file changes
   }, [selectedFile]);
 
   const updateFile = (updatedContent) => {
@@ -75,10 +77,14 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     updateFile(newBlocks);
   };
 
-  const updateBlock = (id, newContent) => {
+  const updateBlock = (id, newContent, newType = null) => {
     const newBlocks = blocks.map(block => {
       if (block.id === id) {
-        return { ...block, content: newContent };
+        return { 
+          ...block, 
+          content: newContent,
+          type: newType || block.type
+        };
       }
       return block;
     });
@@ -129,15 +135,21 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
             autoFocus
           />
         ) : (
-          <h2 onClick={() => setIsEditingName(true)}>{fileName}</h2>
+          <h2 onClick={() => editMode && setIsEditingName(true)}>{fileName}</h2>
         )}
         <div className="file-meta">
           <span>Last updated: {new Date(selectedFile.updatedAt).toLocaleString()}</span>
+          <button 
+            className="edit-toggle"
+            onClick={() => setEditMode(!editMode)}
+          >
+            {editMode ? 'View Mode' : 'Edit Mode'}
+          </button>
         </div>
       </div>
 
       <div className="blocks-container">
-        {blocks.length === 0 && (
+        {blocks.length === 0 && editMode && (
           <button 
             className="add-first-block"
             onClick={() => addBlock('paragraph', -1)}
@@ -157,6 +169,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
             moveBlock={moveBlock}
             isFirst={index === 0}
             isLast={index === blocks.length - 1}
+            editMode={editMode}
           />
         ))}
       </div>
@@ -164,7 +177,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   );
 };
 
-const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, isFirst, isLast }) => {
+const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, isFirst, isLast, editMode }) => {
   const [content, setContent] = useState(block.content);
 
   const handleContentChange = (e) => {
@@ -196,42 +209,58 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
     updateBlock(block.id, newList);
   };
 
+  const handleTypeChange = (e) => {
+    const newType = e.target.value;
+    const newContent = newType === 'list' ? ['Item 1'] : '';
+    updateBlock(block.id, newContent, newType);
+  };
+
   const renderBlockContent = () => {
     switch (block.type) {
       case 'heading':
-        return (
+        return editMode ? (
           <input
             type="text"
             value={content}
             onChange={handleContentChange}
-            className="block-heading"
+            className="block-heading-input"
             placeholder="Heading"
           />
+        ) : (
+          <h3 className="block-heading-display">{content}</h3>
         );
       case 'paragraph':
-        return (
+        return editMode ? (
           <textarea
             value={content}
             onChange={handleContentChange}
             className="block-paragraph"
             placeholder="Type something..."
           />
+        ) : (
+          <p className="block-paragraph-display">{content}</p>
         );
       case 'list':
         return (
           <div className="block-list">
             {content.map((item, i) => (
               <div key={i} className="list-item">
-                <input
-                  type="text"
-                  value={item}
-                  onChange={(e) => handleListChange(i, e.target.value)}
-                  placeholder="List item"
-                />
-                <button onClick={() => removeListItem(i)}>×</button>
+                {editMode ? (
+                  <>
+                    <input
+                      type="text"
+                      value={item}
+                      onChange={(e) => handleListChange(i, e.target.value)}
+                      placeholder="List item"
+                    />
+                    <button onClick={() => removeListItem(i)}>×</button>
+                  </>
+                ) : (
+                  <div className="list-item-display">• {item}</div>
+                )}
               </div>
             ))}
-            <button onClick={addListItem}>+ Add item</button>
+            {editMode && <button onClick={addListItem}>+ Add item</button>}
           </div>
         );
       default:
@@ -241,26 +270,30 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
 
   return (
     <div className="block">
-      <div className="block-toolbar">
-        <select
-          value={block.type}
-          onChange={(e) => updateBlock(block.id, e.target.value === 'list' ? ['Item 1'] : '', e.target.value)}
-        >
-          <option value="paragraph">Paragraph</option>
-          <option value="heading">Heading</option>
-          <option value="list">List</option>
-        </select>
-        <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst}>↑</button>
-        <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast}>↓</button>
-        <button onClick={() => deleteBlock(block.id)}>Delete</button>
-      </div>
+      {editMode && (
+        <div className="block-toolbar">
+          <select
+            value={block.type}
+            onChange={handleTypeChange}
+          >
+            <option value="paragraph">Paragraph</option>
+            <option value="heading">Heading</option>
+            <option value="list">List</option>
+          </select>
+          <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst}>↑</button>
+          <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast}>↓</button>
+          <button onClick={() => deleteBlock(block.id)}>Delete</button>
+        </div>
+      )}
       {renderBlockContent()}
-      <button 
-        className="add-block-below"
-        onClick={() => addBlock('paragraph', index)}
-      >
-        +
-      </button>
+      {editMode && (
+        <button 
+          className="add-block-below"
+          onClick={() => addBlock('paragraph', index)}
+        >
+          +
+        </button>
+      )}
     </div>
   );
 };

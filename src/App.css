@@ -295,6 +295,32 @@ body {
   box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.2);
 }
 
+.block-heading-display {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: -0.6em 0;
+}
+
+.block-paragraph-display {
+  margin: 0.5em 0;
+  white-space: pre-wrap;
+}
+
+.list-item-display {
+  margin: 0.3em 0;
+  padding-left: 1em;
+}
+
+.block-toolbar {
+  display: flex;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.add-block-below {
+  margin-top: 0.5em;
+}
+
 /* List Block */
 .block-list {
   width: 100%;
