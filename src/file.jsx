@@ -68,7 +68,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     const newBlock = {
       id: uuidv4(),
       type,
-      content: type === 'heading' ? 'Heading' : type === 'list' ? ['Item 1'] : '',
+      content: type === 'heading' ? 'Heading' : type === 'list' ? { heading: 'List Heading', items: ['Item 1'] } : '',
     };
   
     const newBlocks = [...blocks];
@@ -85,7 +85,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
           return { 
             ...block, 
             type: newType,
-            content: newType === 'list' ? ['Item 1'] : ''
+            content: newType === 'list' ? { heading: 'List Heading', items: ['Item 1'] } : ''
           };
         }
         return { 
@@ -186,7 +186,18 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
 };
 
 const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, isFirst, isLast, editMode }) => {
-  const [content, setContent] = useState(block.content);
+  const [content, setContent] = useState(() => {
+    if (block.type === 'list') {
+      // Handle both old array format and new object format
+      if (Array.isArray(block.content)) {
+        return { heading: 'List', items: block.content };
+      }
+      return block.content && typeof block.content === 'object' 
+        ? block.content 
+        : { heading: 'List', items: ['Item 1'] };
+    }
+    return block.content || '';
+  });
 
   const handleContentChange = (e) => {
     const newContent = e.target.value;
@@ -194,27 +205,49 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
     updateBlock(block.id, newContent);
   };
 
+  const handleListHeadingChange = (e) => {
+    const newContent = { 
+      ...(content || {}), 
+      heading: e.target.value 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
+  };
+
   const handleListChange = (listIndex, value) => {
-    const newList = [...content];
-    newList[listIndex] = value;
-    setContent(newList);
-    updateBlock(block.id, newList);
+    const newItems = [...(content?.items || [])];
+    newItems[listIndex] = value;
+    const newContent = { 
+      ...(content || {}), 
+      items: newItems 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
   };
 
   const addListItem = () => {
-    const newList = [...content, 'New item'];
-    setContent(newList);
-    updateBlock(block.id, newList);
+    const newItems = [...(content?.items || []), 'New item'];
+    const newContent = { 
+      ...(content || {}), 
+      items: newItems 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
   };
 
   const removeListItem = (listIndex) => {
-    if (content.length <= 1) {
+    const currentItems = content?.items || [];
+    if (currentItems.length <= 1) {
       deleteBlock(block.id);
       return;
     }
-    const newList = content.filter((_, i) => i !== listIndex);
-    setContent(newList);
-    updateBlock(block.id, newList);
+    const newItems = currentItems.filter((_, i) => i !== listIndex);
+    const newContent = { 
+      ...(content || {}), 
+      items: newItems 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
   };
 
   const handleTypeChange = (e) => {
@@ -228,48 +261,65 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
         return editMode ? (
           <input
             type="text"
-            value={content}
+            value={content || ''}
             onChange={handleContentChange}
             className="block-heading-input"
             placeholder="Heading"
           />
         ) : (
-          <h3 className="block-heading-display">{content}</h3>
+          <h3 className="block-heading-display">{content || ''}</h3>
         );
       case 'paragraph':
         return editMode ? (
           <textarea
-            value={content}
+            value={content || ''}
             onChange={handleContentChange}
             className="block-paragraph"
             placeholder="Type something..."
           />
         ) : (
-          <p className="block-paragraph-display">{content}</p>
+          <p className="block-paragraph-display">{content || ''}</p>
         );
       case 'list':
-        // Ensure content is always an array
-        const listContent = Array.isArray(content) ? content : ['Item 1'];
+        // Ensure content has proper structure
+        const safeContent = content && typeof content === 'object' 
+          ? content 
+          : { heading: 'List', items: ['Item 1'] };
+        const safeItems = Array.isArray(safeContent.items) 
+          ? safeContent.items 
+          : ['Item 1'];
+        
         return (
           <div className="block-list">
-            {listContent.map((item, i) => (
+            {editMode ? (
+              <input
+                type="text"
+                value={safeContent.heading || ''}
+                onChange={handleListHeadingChange}
+                className="list-heading-input"
+                placeholder="List Heading"
+              />
+            ) : (
+              <h4 className="list-heading-display">{safeContent.heading || 'List'}</h4>
+            )}
+            {safeItems.map((item, i) => (
               <div
                 key={i}
                 className="list-item"
-                style={{ marginBottom: i !== listContent.length - 1 ? '1rem' : '0rem' }}
+                style={{ marginBottom: i !== safeItems.length - 1 ? '1rem' : '0rem' }}
               >
                 {editMode ? (
                   <>
                     <input
                       type="text"
-                      value={item}
+                      value={item || ''}
                       onChange={(e) => handleListChange(i, e.target.value)}
                       placeholder="List item"
                     />
                     <button onClick={() => removeListItem(i)}>×</button>
                   </>
                 ) : (
-                  <div className="list-item-display">• {item}</div>
+                  <div className="list-item-display">• {item || ''}</div>
                 )}
               </div>
             ))}
@@ -282,7 +332,7 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
   };
 
   return (
-    <div className="block" style={{marginBottom: editMode ? '1.5rem' : '0.2rem',}}>
+    <div className="block" style={{marginBottom: editMode ? '1.5rem' : '0.2rem'}}>
       {editMode && (
         <div className="block-toolbar">
           <select
