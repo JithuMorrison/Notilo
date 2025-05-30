@@ -70,7 +70,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
       type,
       content: type === 'heading' ? 'Heading' : type === 'list' ? ['Item 1'] : '',
     };
-
+  
     const newBlocks = [...blocks];
     newBlocks.splice(index + 1, 0, newBlock);
     setBlocks(newBlocks);
@@ -80,6 +80,14 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   const updateBlock = (id, newContent, newType = null) => {
     const newBlocks = blocks.map(block => {
       if (block.id === id) {
+        // When type changes, initialize content appropriately
+        if (newType && newType !== block.type) {
+          return { 
+            ...block, 
+            type: newType,
+            content: newType === 'list' ? ['Item 1'] : ''
+          };
+        }
         return { 
           ...block, 
           content: newContent,
@@ -211,8 +219,7 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
 
   const handleTypeChange = (e) => {
     const newType = e.target.value;
-    const newContent = newType === 'list' ? ['Item 1'] : '';
-    updateBlock(block.id, newContent, newType);
+    updateBlock(block.id, null, newType);
   };
 
   const renderBlockContent = () => {
@@ -241,9 +248,11 @@ const Block = ({ block, index, addBlock, updateBlock, deleteBlock, moveBlock, is
           <p className="block-paragraph-display">{content}</p>
         );
       case 'list':
+        // Ensure content is always an array
+        const listContent = Array.isArray(content) ? content : ['Item 1'];
         return (
           <div className="block-list">
-            {content.map((item, i) => (
+            {listContent.map((item, i) => (
               <div key={i} className="list-item">
                 {editMode ? (
                   <>
