@@ -225,40 +225,64 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
       updatedAt: new Date().toISOString()
     };
     
-    // Remove selected blocks from current file
+    // Remove blocks from current file
     const newBlocks = blocks.filter(block => !selectedBlocks.includes(block.id));
-    setBlocks(newBlocks);
-    setSelectedBlocks([]);
-    updateFile(newBlocks);
     
-    // Add new file to the current folder
+    // Update both files in folders state
     const updateFolders = (folders, currentPathIndex = 0) => {
       return folders.map(folder => {
+        // Check if this folder contains the source file
+        const sourceFileInFolder = folder.files.some(f => f.id === selectedFile.id);
+        
+        let updatedFiles = [...folder.files];
+        let updatedFolders = [...folder.folders];
+        
+        // If this is the target folder (current folder)
         if (currentPath.length > 0 && currentPath[currentPathIndex] === folder.id) {
           if (currentPathIndex < currentPath.length - 1) {
-            return {
-              ...folder,
-              folders: updateFolders(folder.folders, currentPathIndex + 1)
-            };
+            // Continue searching in subfolders
+            updatedFolders = updateFolders(folder.folders, currentPathIndex + 1);
+          } else {
+            // We're in the target folder - add new file and update source file
+            updatedFiles = [
+              ...folder.files.map(file => 
+                file.id === selectedFile.id 
+                  ? { ...file, content: newBlocks, updatedAt: new Date().toISOString() }
+                  : file
+              ),
+              newFile
+            ];
           }
-          
-          return {
-            ...folder,
-            files: [...folder.files, newFile]
-          };
+        } 
+        // If not the target folder, but contains source file
+        else if (sourceFileInFolder) {
+          updatedFiles = updatedFiles.map(file => 
+            file.id === selectedFile.id 
+              ? { ...file, content: newBlocks, updatedAt: new Date().toISOString() }
+              : file
+          );
         }
+        
         return {
           ...folder,
-          folders: updateFolders(folder.folders, currentPathIndex)
+          files: updatedFiles,
+          folders: updatedFolders
         };
       });
     };
-
-    setFolders(prevFolders => updateFolders(prevFolders));
+  
+    // Update state
+    setFolders(prevFolders => {
+      const updatedFolders = updateFolders(prevFolders);
+      return updatedFolders;
+    });
+  
+    setBlocks(newBlocks);
+    setSelectedBlocks([]);
     setSelectedFile(newFile);
     setShowMoveDialog(false);
   };
-
+  
   const moveBlocksToExistingFile = () => {
     if (!targetFileId) return;
     if (!confirm('Are you sure you want to move selected blocks to the selected file?')) return;
@@ -266,25 +290,42 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     const targetFile = availableFiles.find(f => f.id === targetFileId);
     if (!targetFile) return;
     
-    // Add blocks to target file
+    // Get blocks to move
+    const blocksToMove = blocks.filter(block => selectedBlocks.includes(block.id));
+    
+    // Update target file with moved blocks
     const updatedTargetFile = {
       ...targetFile,
-      content: [...targetFile.content, ...blocks.filter(block => selectedBlocks.includes(block.id))],
+      content: [...targetFile.content, ...blocksToMove],
       updatedAt: new Date().toISOString()
     };
     
     // Remove blocks from current file
     const newBlocks = blocks.filter(block => !selectedBlocks.includes(block.id));
-    setBlocks(newBlocks);
-    setSelectedBlocks([]);
-    updateFile(newBlocks);
     
-    // Update target file in folders
+    // Update both files in folders state
     const updateFolders = (folders) => {
       return folders.map(folder => {
-        const updatedFiles = folder.files.map(file => 
-          file.id === targetFileId ? updatedTargetFile : file
-        );
+        // Check if this folder contains the source file
+        const sourceFileInFolder = folder.files.some(f => f.id === selectedFile.id);
+        // Check if this folder contains the target file
+        const targetFileInFolder = folder.files.some(f => f.id === targetFileId);
+        
+        let updatedFiles = [...folder.files];
+        
+        if (sourceFileInFolder) {
+          updatedFiles = updatedFiles.map(file => 
+            file.id === selectedFile.id 
+              ? { ...file, content: newBlocks, updatedAt: new Date().toISOString() }
+              : file
+          );
+        }
+        
+        if (targetFileInFolder) {
+          updatedFiles = updatedFiles.map(file => 
+            file.id === targetFileId ? updatedTargetFile : file
+          );
+        }
         
         return {
           ...folder,
@@ -293,9 +334,21 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
         };
       });
     };
-
-    setFolders(prevFolders => updateFolders(prevFolders));
+  
+    // Update state
+    setFolders(prevFolders => {
+      const updatedFolders = updateFolders(prevFolders);
+      return updatedFolders;
+    });
+  
+    setBlocks(newBlocks);
+    setSelectedBlocks([]);
     setShowMoveDialog(false);
+    
+    // Update selected file reference if needed
+    if (selectedFile.id === targetFileId) {
+      setSelectedFile(updatedTargetFile);
+    }
   };
 
   const handleDrop = (draggedId, targetId) => {
