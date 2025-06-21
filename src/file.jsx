@@ -22,6 +22,9 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   const [mode, setMode] = useState(MODES.VIEW);
   const [editingBlockId, setEditingBlockId] = useState(null);
   const [selectedBlocks, setSelectedBlocks] = useState([]);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [targetFileId, setTargetFileId] = useState(null);
+  const [availableFiles, setAvailableFiles] = useState([]);
 
   useEffect(() => {
     if (selectedFile) {
@@ -183,13 +186,40 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     updateFile(newBlocks);
   };
 
+  const prepareMoveOptions = () => {
+    // Get all files in the current folder
+    const getFilesInCurrentFolder = (folders, pathIndex = 0) => {
+      if (pathIndex >= currentPath.length) {
+        return folders.flatMap(folder => [
+          ...folder.files.filter(file => file.id !== selectedFile.id),
+          ...getFilesInCurrentFolder(folder.folders, pathIndex + 1)
+        ]);
+      }
+      
+      const currentFolder = folders.find(f => f.id === currentPath[pathIndex]);
+      if (!currentFolder) return [];
+      
+      if (pathIndex === currentPath.length - 1) {
+        return currentFolder.files.filter(file => file.id !== selectedFile.id);
+      }
+      
+      return getFilesInCurrentFolder(currentFolder.folders, pathIndex + 1);
+    };
+
+    const files = getFilesInCurrentFolder(folders);
+    setAvailableFiles(files);
+    setShowMoveDialog(true);
+  };
+
   const moveBlocksToNewFile = () => {
+    if (!confirm('Are you sure you want to move selected blocks to a new file?')) return;
+    
     if (selectedBlocks.length === 0) return;
     
     // Create new file with selected blocks
     const newFile = {
       id: uuidv4(),
-      name: `New File from Selection`,
+      name: `New File from Selection (${new Date().toLocaleString()})`,
       content: blocks.filter(block => selectedBlocks.includes(block.id)),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -226,6 +256,46 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
 
     setFolders(prevFolders => updateFolders(prevFolders));
     setSelectedFile(newFile);
+    setShowMoveDialog(false);
+  };
+
+  const moveBlocksToExistingFile = () => {
+    if (!targetFileId) return;
+    if (!confirm('Are you sure you want to move selected blocks to the selected file?')) return;
+    
+    const targetFile = availableFiles.find(f => f.id === targetFileId);
+    if (!targetFile) return;
+    
+    // Add blocks to target file
+    const updatedTargetFile = {
+      ...targetFile,
+      content: [...targetFile.content, ...blocks.filter(block => selectedBlocks.includes(block.id))],
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Remove blocks from current file
+    const newBlocks = blocks.filter(block => !selectedBlocks.includes(block.id));
+    setBlocks(newBlocks);
+    setSelectedBlocks([]);
+    updateFile(newBlocks);
+    
+    // Update target file in folders
+    const updateFolders = (folders) => {
+      return folders.map(folder => {
+        const updatedFiles = folder.files.map(file => 
+          file.id === targetFileId ? updatedTargetFile : file
+        );
+        
+        return {
+          ...folder,
+          files: updatedFiles,
+          folders: updateFolders(folder.folders)
+        };
+      });
+    };
+
+    setFolders(prevFolders => updateFolders(prevFolders));
+    setShowMoveDialog(false);
   };
 
   const handleDrop = (draggedId, targetId) => {
@@ -321,8 +391,53 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
             <button onClick={() => moveSelectedBlocks('up')}>Move Up</button>
             <button onClick={() => moveSelectedBlocks('down')}>Move Down</button>
             <button onClick={deleteSelectedBlocks}>Delete</button>
-            <button onClick={moveBlocksToNewFile}>Move to New File</button>
+            <button onClick={prepareMoveOptions}>Move Blocks To...</button>
             <span>{selectedBlocks.length} blocks selected</span>
+          </div>
+        )}
+
+{showMoveDialog && (
+          <div className="move-dialog">
+            <div className="move-dialog-content">
+              <h3>Move {selectedBlocks.length} blocks to: </h3>
+              <h5>**Select the folder needed in left sidebar**</h5>
+              <div className="move-options">
+                <button onClick={moveBlocksToNewFile}>
+                  New File (in the Selected folder)
+                </button>
+                {availableFiles.length > 0 && (
+                  <>
+                    <div className="existing-files">
+                      <h4>Existing Files:</h4>
+                      <select 
+                        value={targetFileId || ''}
+                        onChange={(e) => setTargetFileId(e.target.value)}
+                      >
+                        <option value="">Select a file</option>
+                        {availableFiles.map(file => (
+                          <option key={file.id} value={file.id}>
+                            {file.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button 
+                        onClick={moveBlocksToExistingFile}
+                        disabled={!targetFileId}
+                      >
+                        Move to Selected File
+                      </button>
+                    </div>
+                  </>
+                )}
+                {availableFiles.length === 0 && <div>No existing files other than this available in current selected folder</div>}
+              </div>
+              <button 
+                className="cancel-move"
+                onClick={() => setShowMoveDialog(false)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 

@@ -575,6 +575,67 @@ list-heading-input {
   background: #d90429;
 }
 
+.move-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.move-dialog-content {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 90%;
+}
+
+.move-options {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.move-options button {
+  padding: 8px 12px;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.move-options button:hover {
+  background: #3a7bc8;
+}
+
+.move-options button:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
+
+.existing-files {
+  margin-top: 15px;
+}
+
+.existing-files select {
+  width: 100%;
+  padding: 8px;
+  margin: 10px 0;
+}
+
+.cancel-move {
+  background: #ff4444 !important;
+  margin-top: 15px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .app {
