@@ -216,6 +216,7 @@ body {
   box-shadow: var(--shadow-sm);
   transition: var(--transition);
   position: relative;
+  user-select: text;
 }
 
 .block:hover {
@@ -240,10 +241,31 @@ body {
 
 .block.dragging {
   opacity: 0.5;
+  user-select: none;
 }
 
 .block.drop-target {
   border: 2px dashed #4a90e2;
+}
+
+.block * {
+  user-select: text;
+}
+
+.block.dragging * {
+  user-select: none;
+}
+
+.drag-handle {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 5px;
+  cursor: move;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  background: #eee;
 }
 
 .editing-block {

@@ -565,13 +565,18 @@ const Block = ({
 
   const ref = useRef(null);
 
-  const [{ isDragging }, drag] = useDrag({
+  const dragRef = useRef(null);
+
+  const [{ isDragging }, drag, preview] = useDrag({
     type: ItemTypes.BLOCK,
     item: { id: block.id },
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
-    canDrag: () => dragMode || selectMode
+    canDrag: () => dragMode || selectMode,
+    previewOptions: {
+      captureDraggingState: true,
+    },
   });
 
   const [{ isOver }, drop] = useDrop({
@@ -580,10 +585,14 @@ const Block = ({
     collect: (monitor) => ({
       isOver: !!monitor.isOver(),
     }),
-    canDrop: () => dragMode
+    canDrop: () => dragMode,
   });
 
-  drag(drop(ref));
+  // Use separate refs for drag handle and drop target
+  drag(dragRef);
+  drop(ref);
+
+  //drag(drop(ref));
 
   const handleContentChange = (e) => {
     const newContent = e.target.value;
@@ -779,43 +788,56 @@ const Block = ({
   };
 
   return (
-    <div 
-      ref={ref}
-      className={`block 
-        ${isDragging ? 'dragging' : ''} 
-        ${isOver ? 'drop-target' : ''}
-        ${isSelected ? 'selected' : ''}
-      `}
-      style={{
-        opacity: isDragging ? 0.5 : 1,
-        marginBottom: editMode || isEditing ? '1.5rem' : '0.2rem',
-        cursor: (dragMode || selectMode) ? 'move' : 'default'
-      }}
-    >
-      {editMode && !isEditing && (
-        <div className="block-toolbar">
-          <select
-            value={block.type}
-            onChange={handleTypeChange}
+    <div ref={preview} style={{ position: 'relative' }}>
+      <div 
+        ref={ref}
+        className={`block 
+          ${isDragging ? 'dragging' : ''} 
+          ${isOver ? 'drop-target' : ''}
+          ${isSelected ? 'selected' : ''}
+        `}
+        style={{
+          opacity: isDragging ? 0.5 : 1,
+          marginBottom: editMode || isEditing ? '1.5rem' : '0.2rem',
+          cursor: (dragMode || selectMode) ? 'move' : 'default',
+          // Add this to prevent text selection during drag
+          userSelect: isDragging ? 'none' : 'auto',
+        }}
+        onMouseDown={(e) => {
+          // Allow text selection when not in drag mode
+          if (!dragMode && !selectMode) {
+            e.stopPropagation();
+          }
+        }}
+      >
+        {editMode && !isEditing && (
+          <div className="block-toolbar">
+            <div ref={dragRef} className="drag-handle" style={{ cursor: 'move' }}>
+              ☰
+            </div>
+            <select
+              value={block.type}
+              onChange={handleTypeChange}
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="heading">Heading</option>
+              <option value="list">List</option>
+            </select>
+            <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst}>↑</button>
+            <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast}>↓</button>
+            <button onClick={() => deleteBlock(block.id)}>Delete</button>
+          </div>
+        )}
+        {renderBlockContent()}
+        {editMode && !isEditing && (
+          <button 
+            className="add-block-below"
+            onClick={() => addBlock('paragraph', index)}
           >
-            <option value="paragraph">Paragraph</option>
-            <option value="heading">Heading</option>
-            <option value="list">List</option>
-          </select>
-          <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst}>↑</button>
-          <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast}>↓</button>
-          <button onClick={() => deleteBlock(block.id)}>Delete</button>
-        </div>
-      )}
-      {renderBlockContent()}
-      {editMode && !isEditing && (
-        <button 
-          className="add-block-below"
-          onClick={() => addBlock('paragraph', index)}
-        >
-          +
-        </button>
-      )}
+            +
+          </button>
+        )}
+      </div>
     </div>
   );
 };
