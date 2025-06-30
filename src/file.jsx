@@ -25,6 +25,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [targetFileId, setTargetFileId] = useState(null);
   const [availableFiles, setAvailableFiles] = useState([]);
+  const [expandedFolders, setExpandedFolders] = useState(null);
 
   useEffect(() => {
     if (selectedFile) {
@@ -211,6 +212,157 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     setShowMoveDialog(true);
   };
 
+  const exportFileAsJson = () => {
+    if (!selectedFile) return;
+    
+    const data = {
+      ...selectedFile,
+      exportedAt: new Date().toISOString()
+    };
+    
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedFile.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportFolderAsJson = () => {
+    // Find the current folder
+    const getCurrentFolder = (folders, pathIndex = 0) => {
+      if (pathIndex >= currentPath.length) {
+        return {
+          id: 'root',
+          name: 'Root Folder',
+          folders,
+          files: []
+        };
+      }
+      
+      const currentFolder = folders.find(f => f.id === currentPath[pathIndex]);
+      if (!currentFolder) return null;
+      
+      if (pathIndex === currentPath.length - 1) {
+        return currentFolder;
+      }
+      
+      return getCurrentFolder(currentFolder.folders, pathIndex + 1);
+    };
+    
+    const currentFolder = getCurrentFolder(folders);
+    if (!currentFolder) return;
+    
+    const data = {
+      ...currentFolder,
+      exportedAt: new Date().toISOString()
+    };
+    
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentFolder.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_folder.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const importJson = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        
+        // Determine if it's a file or folder
+        if (data.content !== undefined) {
+          // It's a file
+          const newFile = {
+            ...data,
+            id: uuidv4(), // Generate new ID to avoid conflicts
+            createdAt: data.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Add to current folder
+          const updateFolders = (folders, currentPathIndex = 0) => {
+            return folders.map(folder => {
+              if (currentPath.length > 0 && currentPath[currentPathIndex] === folder.id) {
+                if (currentPathIndex < currentPath.length - 1) {
+                  return {
+                    ...folder,
+                    folders: updateFolders(folder.folders, currentPathIndex + 1)
+                  };
+                }
+                
+                return {
+                  ...folder,
+                  files: [...folder.files, newFile]
+                };
+              }
+              return {
+                ...folder,
+                folders: updateFolders(folder.folders, currentPathIndex)
+              };
+            });
+          };
+          
+          setFolders(prevFolders => updateFolders(prevFolders));
+          setSelectedFile(newFile);
+        } else {
+          // It's a folder
+          const newFolder = {
+            ...data,
+            id: uuidv4(), // Generate new ID to avoid conflicts
+            folders: data.folders || [],
+            files: data.files || []
+          };
+          
+          // Add to current folder
+          const updateFolders = (folders, currentPathIndex = 0) => {
+            return folders.map(folder => {
+              if (currentPath.length > 0 && currentPath[currentPathIndex] === folder.id) {
+                if (currentPathIndex < currentPath.length - 1) {
+                  return {
+                    ...folder,
+                    folders: updateFolders(folder.folders, currentPathIndex + 1)
+                  };
+                }
+                
+                return {
+                  ...folder,
+                  folders: [...folder.folders, newFolder]
+                };
+              }
+              return {
+                ...folder,
+                folders: updateFolders(folder.folders, currentPathIndex)
+              };
+            });
+          };
+          
+          setFolders(prevFolders => updateFolders(prevFolders));
+          setExpandedFolders(prev => ({ ...prev, [newFolder.id]: true }));
+        }
+      } catch (error) {
+        console.error('Error parsing JSON:', error);
+        alert('Invalid JSON file');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const moveBlocksToNewFile = () => {
     if (!confirm('Are you sure you want to move selected blocks to a new file?')) return;
     
@@ -370,6 +522,16 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   if (!selectedFile) {
     return (
       <div className="file-editor empty">
+        <button onClick={exportFolderAsJson}>Export Folder</button>
+            <label className="import-button">
+              Import JSON
+              <input 
+                type="file" 
+                accept=".json" 
+                onChange={importJson} 
+                style={{ display: 'none' }} 
+              />
+            </label>
         <div className="empty-state">
           <h2>No file selected</h2>
           <p>Select a file from the sidebar or create a new one</p>
@@ -436,6 +598,19 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
                 Select
               </button>
             </div>
+          </div>
+          <div className="file-actions">
+            <button onClick={exportFileAsJson}>Export File</button>
+            <button onClick={exportFolderAsJson}>Export Folder</button>
+            <label className="import-button">
+              Import JSON
+              <input 
+                type="file" 
+                accept=".json" 
+                onChange={importJson} 
+                style={{ display: 'none' }} 
+              />
+            </label>
           </div>
         </div>
 
@@ -592,7 +767,7 @@ const Block = ({
   drag(dragRef);
   drop(ref);
 
-  //drag(drop(ref));
+  drag(drop(ref));
 
   const handleContentChange = (e) => {
     const newContent = e.target.value;
@@ -663,6 +838,12 @@ const Block = ({
               placeholder="Heading"
               autoFocus
             />
+            <button 
+              className="add-block-below"
+              onClick={() => addBlock('paragraph', index)}
+            >
+              +
+            </button>
             <button onClick={onFinishEditing}>Done</button>
           </div>
         ) : editMode ? (
@@ -692,6 +873,12 @@ const Block = ({
               placeholder="Type something..."
               autoFocus
             />
+            <button 
+              className="add-block-below"
+              onClick={() => addBlock('paragraph', index)}
+            >
+              +
+            </button>
             <button onClick={onFinishEditing}>Done</button>
           </div>
         ) : editMode ? (
@@ -741,6 +928,12 @@ const Block = ({
             ))}
             <div className="list-actions">
               <button onClick={addListItem}>+ Add item</button>
+              <button 
+                className="add-block-below"
+                onClick={() => addBlock('paragraph', index)}
+              >
+                +
+              </button>
               <button onClick={onFinishEditing}>Done</button>
             </div>
           </div>
