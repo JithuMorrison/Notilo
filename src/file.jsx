@@ -89,7 +89,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     const newBlock = {
       id: uuidv4(),
       type,
-      content: type === 'heading' ? 'Heading' : type === 'list' ? { heading: 'List Heading', items: ['Item 1'] } : '',
+      content: type === 'heading' ? 'Heading' : type === 'list' ? { heading: 'List Heading', items: ['Item 1'] } : 'Enter Text',
     };
   
     const newBlocks = [...blocks];
@@ -105,7 +105,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
           return { 
             ...block, 
             type: newType,
-            content: newType === 'list' ? { heading: 'List Heading', items: ['Item 1'] } : ''
+            content: newType === 'list' ? { heading: 'List Heading', items: ['Item 1'] } : 'Enter Text'
           };
         }
         return { 
