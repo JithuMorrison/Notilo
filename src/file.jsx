@@ -752,7 +752,7 @@ const Block = ({
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
-    canDrag: () => dragMode || selectMode,
+    canDrag: () => dragMode,
     previewOptions: {
       captureDraggingState: true,
     },
@@ -1033,9 +1033,6 @@ const Block = ({
       >
         {editMode && !isEditing && (
           <div className="block-toolbar">
-            <div ref={dragRef} className="drag-handle" style={{ cursor: 'move' }}>
-              ☰
-            </div>
             <select
               value={block.type}
               onChange={handleTypeChange}
