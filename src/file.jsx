@@ -834,6 +834,14 @@ const Block = ({
       case 'heading':
         return isEditing ? (
           <div className="editing-block">
+            <select
+              value={block.type}
+              onChange={handleTypeChange}
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="heading">Heading</option>
+              <option value="list">List</option>
+            </select><br/>
             <input
               type="text"
               value={content || ''}
@@ -870,6 +878,14 @@ const Block = ({
       case 'paragraph':
         return isEditing ? (
           <div className="editing-block">
+            <select
+              value={block.type}
+              onChange={handleTypeChange}
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="heading">Heading</option>
+              <option value="list">List</option>
+            </select><br/>
             <textarea
               value={content || ''}
               onChange={handleContentChange}
@@ -911,6 +927,14 @@ const Block = ({
         
         return isEditing ? (
           <div className="editing-block">
+            <select
+              value={block.type}
+              onChange={handleTypeChange}
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="heading">Heading</option>
+              <option value="list">List</option>
+            </select><br/>
             <input
               type="text"
               value={safeContent.heading || ''}

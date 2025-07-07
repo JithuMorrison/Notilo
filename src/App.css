@@ -285,6 +285,14 @@ body {
   gap: 5px;
 }
 
+.import-button {
+  padding: 0px 10px;
+  background: #eee;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .mode-btn {
   background: linear-gradient(to right, #6a11cb, #2575fc);
   color: white;
