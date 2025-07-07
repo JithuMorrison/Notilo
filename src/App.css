@@ -214,14 +214,6 @@ body {
   margin-top: 10px;
 }
 
-.import-button {
-  padding: 0px 10px;
-  background: #eee;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
 /* Blocks */
 .block {
   border-radius: var(--radius-md);
@@ -294,10 +286,22 @@ body {
 }
 
 .mode-btn {
-  padding: 5px 10px;
-  background: #eee;
-  border: 1px solid #ddd;
+  background: linear-gradient(to right, #6a11cb, #2575fc);
+  color: white;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 50px;
+  font-size: 16px;
   cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: fixed;
+  top: 10px;
+  z-index: 99;
+}
+
+.mode-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(101, 106, 255, 0.3);
 }
 
 .mode-btn.active {
@@ -670,6 +674,24 @@ list-heading-input {
 .cancel-move {
   background: #ff4444 !important;
   margin-top: 15px;
+}
+
+.gbtn {
+  background: linear-gradient(to right, #6a11cb, #2575fc);
+  color: white;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 50px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: absolute;
+  top: 10px;
+}
+
+.gbtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(101, 106, 255, 0.3);
 }
 
 /* Responsive Design */

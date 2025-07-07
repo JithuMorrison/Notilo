@@ -522,8 +522,8 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   if (!selectedFile) {
     return (
       <div className="file-editor empty">
-        <button onClick={exportFolderAsJson}>Export Folder</button>
-            <label className="import-button">
+        <button onClick={exportFolderAsJson} className='gbtn' style={{right: '7px'}}>Export Folder</button>
+            <label className="gbtn" style={{right: '130px',padding: '2px 12px'}}>
               Import JSON
               <input 
                 type="file" 
@@ -561,6 +561,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
             <div className="mode-controls">
               <button 
                 className={`mode-btn ${mode === MODES.VIEW ? 'active' : ''}`}
+                style={{right: '200px'}}
                 onClick={() => {
                   setMode(MODES.VIEW);
                   setEditingBlockId(null);
@@ -571,6 +572,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
               </button>
               <button 
                 className={`mode-btn ${mode === MODES.EDIT ? 'active' : ''}`}
+                style={{right: '144px'}}
                 onClick={() => {
                   setMode(MODES.EDIT);
                   setSelectedBlocks([]);
@@ -580,6 +582,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
               </button>
               <button 
                 className={`mode-btn ${mode === MODES.DRAG ? 'active' : ''}`}
+                style={{right: '81px'}}
                 onClick={() => {
                   setMode(MODES.DRAG);
                   setEditingBlockId(null);
@@ -590,6 +593,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
               </button>
               <button 
                 className={`mode-btn ${mode === MODES.SELECT ? 'active' : ''}`}
+                style={{right: '9px'}}
                 onClick={() => {
                   setMode(MODES.SELECT);
                   setEditingBlockId(null);
