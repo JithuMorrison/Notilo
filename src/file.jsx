@@ -1021,11 +1021,9 @@ const Block = ({
           opacity: isDragging ? 0.5 : 1,
           marginBottom: editMode || isEditing ? '1.5rem' : '0.2rem',
           cursor: (dragMode || selectMode) ? 'move' : 'default',
-          // Add this to prevent text selection during drag
           userSelect: isDragging ? 'none' : 'auto',
         }}
         onMouseDown={(e) => {
-          // Allow text selection when not in drag mode
           if (!dragMode && !selectMode) {
             e.stopPropagation();
           }
