@@ -15,6 +15,36 @@ const ItemTypes = {
   BLOCK: 'block'
 };
 
+const parseContent = (content) => {
+  const regex = /<link>(.*?)<\/link>/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    const [fullMatch, linkText] = match;
+    const start = match.index;
+
+    if (start > lastIndex) {
+      parts.push(content.slice(lastIndex, start));
+    }
+
+    parts.push(
+      <a key={start} href={linkText} target="_blank" rel="noopener noreferrer" style={{ color: '#007bff' }}>
+        {linkText}
+      </a>
+    );
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+
+  return parts;
+}
+
 const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, currentPath }) => {
   const [fileName, setFileName] = useState('');
   const [blocks, setBlocks] = useState([]);
@@ -914,7 +944,7 @@ const Block = ({
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
-            {content || ''}
+            {parseContent(content || '')}
           </p>
         );
       case 'list':
