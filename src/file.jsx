@@ -589,6 +589,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
           <div className="file-meta">
             <span>Last updated: {new Date(selectedFile.updatedAt).toLocaleString()}</span>
             <div className="mode-controls">
+              <button className={'mode-btn'} style={{right: '263px'}} onClick={()=>{setSelectedFile(null)}}>Clear</button>
               <button 
                 className={`mode-btn ${mode === MODES.VIEW ? 'active' : ''}`}
                 style={{right: '200px'}}
