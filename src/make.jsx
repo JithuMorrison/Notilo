@@ -46,17 +46,23 @@ export default function MarkdownEditor() {
   const parseMarkdown = (text) => {
     let html = text;
     
+    // Parse line spacing tags: [lsp=2]text[/lsp]
+    html = html.replace(/\[lsp=([0-9.]+)\](.*?)\[\/lsp\]/gs, '<div style="line-height: $1">$2</div>');
+    
+    // Parse space tags: [space=20][/space]
+    html = html.replace(/\[space=(\d+)\]\[\/space\]/g, '<div style="height: $1px"></div>');
+    
     // Parse color tags: [c=red]text[/c] or [c=#FF0000]text[/c]
-    html = html.replace(/\[c=([a-zA-Z0-9#]+)\](.*?)\[\/c\]/g, '<span style="color: $1">$2</span>');
+    html = html.replace(/\[c=([a-zA-Z0-9#]+)\](.*?)\[\/c\]/gs, '<span style="color: $1">$2</span>');
     
     // Parse font size tags: [f=20]text[/f]
-    html = html.replace(/\[f=(\d+)\](.*?)\[\/f\]/g, '<span style="font-size: $1px">$2</span>');
+    html = html.replace(/\[f=(\d+)\](.*?)\[\/f\]/gs, '<span style="font-size: $1px">$2</span>');
     
     // Bold: **text**
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     
     // Italic: *text*
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    html = html.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
     
     // Headings - must be at start of line
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
@@ -65,8 +71,8 @@ export default function MarkdownEditor() {
     
     // Convert line breaks to <br>
     html = html.split('\n').map(line => {
-      // Don't add <br> if line is already a heading
-      if (line.startsWith('<h')) return line;
+      // Don't add <br> if line is already a heading or div
+      if (line.startsWith('<h') || line.startsWith('<div')) return line;
       return line + '<br>';
     }).join('');
     
@@ -185,7 +191,7 @@ export default function MarkdownEditor() {
     <style>
         body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
         .container { position: relative; width: 100%; min-height: 100vh; background: white; }
-        .content { font-size: 16px; line-height: 1.6; }
+        .content { font-size: 16px; line-height: 1.6; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }
         .element { position: absolute; }
         svg { position: absolute; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; }
         h1 { font-size: 32px; font-weight: bold; margin: 16px 0; }
@@ -244,7 +250,108 @@ export default function MarkdownEditor() {
       if (file) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          alert('HTML loaded! (Note: Full parsing not implemented in this demo)');
+          const htmlContent = event.target.result;
+          
+          // Extract markdown content from HTML
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(htmlContent, 'text/html');
+          const contentDiv = doc.querySelector('.content');
+          
+          if (contentDiv) {
+            // Try to reverse parse HTML back to markdown
+            let extractedText = contentDiv.innerHTML;
+            
+            // Remove <br> tags
+            extractedText = extractedText.replace(/<br\s*\/?>/gi, '\n');
+            
+            // Convert headings
+            extractedText = extractedText.replace(/<h1>(.*?)<\/h1>/gi, '# $1\n');
+            extractedText = extractedText.replace(/<h2>(.*?)<\/h2>/gi, '## $1\n');
+            extractedText = extractedText.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n');
+            
+            // Convert bold and italic
+            extractedText = extractedText.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
+            extractedText = extractedText.replace(/<em>(.*?)<\/em>/gi, '*$1*');
+            
+            // Convert color spans
+            extractedText = extractedText.replace(/<span style="color:\s*([^"]+)">(.*?)<\/span>/gi, '[c=$1]$2[/c]');
+            
+            // Convert font size spans
+            extractedText = extractedText.replace(/<span style="font-size:\s*(\d+)px">(.*?)<\/span>/gi, '[f=$1]$2[/f]');
+            
+            // Convert line spacing divs
+            extractedText = extractedText.replace(/<div style="line-height:\s*([0-9.]+)">(.*?)<\/div>/gi, '[lsp=$1]$2[/lsp]');
+            
+            // Convert space divs
+            extractedText = extractedText.replace(/<div style="height:\s*(\d+)px"><\/div>/gi, '[space=$1][/space]');
+            
+            // Remove remaining HTML tags
+            extractedText = extractedText.replace(/<[^>]+>/g, '');
+            
+            // Decode HTML entities
+            extractedText = extractedText.replace(/&nbsp;/g, ' ');
+            extractedText = extractedText.replace(/&lt;/g, '<');
+            extractedText = extractedText.replace(/&gt;/g, '>');
+            extractedText = extractedText.replace(/&amp;/g, '&');
+            
+            setMarkdown(extractedText);
+          }
+          
+          // Extract drawing elements, images, and videos
+          const svgPaths = doc.querySelectorAll('svg path');
+          const imgs = doc.querySelectorAll('img.element');
+          const iframes = doc.querySelectorAll('iframe.element');
+          
+          const loadedElements = [];
+          
+          // Load drawings
+          svgPaths.forEach((path, index) => {
+            const d = path.getAttribute('d');
+            const stroke = path.getAttribute('stroke');
+            if (d) {
+              const pathPoints = d.split(/[ML]/).filter(p => p.trim()).map(p => {
+                const [x, y] = p.trim().split(' ').map(Number);
+                return { x, y };
+              });
+              loadedElements.push({
+                id: Date.now() + index,
+                type: 'drawing',
+                path: pathPoints,
+                color: stroke || '#000000'
+              });
+            }
+          });
+          
+          // Load images
+          imgs.forEach((img, index) => {
+            const style = img.style;
+            loadedElements.push({
+              id: Date.now() + 1000 + index,
+              type: 'image',
+              src: img.getAttribute('src'),
+              x: parseInt(style.left) || 100,
+              y: parseInt(style.top) || 100,
+              width: parseInt(style.width) || 200,
+              height: parseInt(style.height) || 150
+            });
+          });
+          
+          // Load videos
+          iframes.forEach((iframe, index) => {
+            const style = iframe.style;
+            loadedElements.push({
+              id: Date.now() + 2000 + index,
+              type: 'video',
+              src: iframe.getAttribute('src'),
+              x: parseInt(style.left) || 100,
+              y: parseInt(style.top) || 100,
+              width: parseInt(style.width) || 400,
+              height: parseInt(style.height) || 300
+            });
+          });
+          
+          setElements(loadedElements);
+          alert('HTML file loaded successfully!');
         };
         reader.readAsText(file);
       }
@@ -418,7 +525,7 @@ export default function MarkdownEditor() {
               <Type size={16} />
             </button>
             <div style={{ fontSize: '11px', color: '#6b7280', padding: '6px 10px', display: 'flex', alignItems: 'center' }}>
-              Syntax: # Heading, **bold**, *italic*, [c=red]text[/c], [f=20]text[/f]
+              Syntax: # Heading, **bold**, *italic*, [c=red]text[/c], [f=20]text[/f], [lsp=2]text[/lsp], [space=20][/space]
             </div>
           </div>
 
@@ -448,7 +555,9 @@ Examples:
 
 [c=red]red text[/c]
 [c=#0000ff]blue text[/c]
-[f=24]large text[/f]"
+[f=24]large text[/f]
+[lsp=2]text with line spacing 2[/lsp]
+[space=50][/space]"
           />
         </div>
 
@@ -495,7 +604,11 @@ Examples:
                 padding: '20px',
                 fontSize: '16px',
                 lineHeight: '1.6',
-                fontFamily: 'Arial, sans-serif'
+                fontFamily: 'Arial, sans-serif',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+                msUserSelect: 'none'
               }}
               dangerouslySetInnerHTML={{ __html: parseMarkdown(markdown) }}
             />
