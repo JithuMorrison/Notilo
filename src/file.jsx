@@ -74,7 +74,7 @@ const parseContent = (content) => {
 
 // LaTeX Renderer Component
 const LaTeXRenderer = ({ latex }) => {
-  // Simple LaTeX to HTML converter for basic equations
+  // Enhanced LaTeX to HTML converter
   const renderLaTeX = (latex) => {
     if (!latex) return '';
     
@@ -82,16 +82,41 @@ const LaTeXRenderer = ({ latex }) => {
     
     // Replace common LaTeX commands with HTML/Unicode equivalents
     const replacements = [
-      // Fractions
-      [/\\frac\{([^}]+)\}\{([^}]+)\}/g, '<span class="fraction"><span class="numerator">$1</span><span class="denominator">$2</span></span>'],
+      // Fractions - improved rendering
+      [/\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, 
+       '<span class="fraction"><span class="fraction-line"><span class="numerator">$1</span><span class="denominator">$2</span></span></span>'],
       
-      // Superscripts and subscripts
+      // Superscripts and subscripts - improved handling
       [/\^(\w+|\{[^}]+\})/g, (match, p1) => `<sup>${p1.replace(/[{}]/g, '')}</sup>`],
       [/_(\w+|\{[^}]+\})/g, (match, p1) => `<sub>${p1.replace(/[{}]/g, '')}</sub>`],
       
-      // Square roots
-      [/\\sqrt\{([^}]+)\}/g, '√($1)'],
-      [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<sup>$1</sup>√($2)'],
+      // Square roots - better rendering
+      [/\\sqrt\{([^}]+)\}/g, '<span class="sqrt">√<span class="sqrt-content">$1</span></span>'],
+      [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<span class="nth-root"><sup class="root-index">$1</sup>√<span class="sqrt-content">$2</span></span>'],
+      
+      // Powers and squares - special handling
+      [/\^2(?!\d)/g, '²'],
+      [/\^3(?!\d)/g, '³'],
+      [/\^4(?!\d)/g, '⁴'],
+      [/\^5(?!\d)/g, '⁵'],
+      [/\^6(?!\d)/g, '⁶'],
+      [/\^7(?!\d)/g, '⁷'],
+      [/\^8(?!\d)/g, '⁸'],
+      [/\^9(?!\d)/g, '⁹'],
+      [/\^0(?!\d)/g, '⁰'],
+      [/\^1(?!\d)/g, '¹'],
+      
+      // Subscripts
+      [/_0(?!\d)/g, '₀'],
+      [/_1(?!\d)/g, '₁'],
+      [/_2(?!\d)/g, '₂'],
+      [/_3(?!\d)/g, '₃'],
+      [/_4(?!\d)/g, '₄'],
+      [/_5(?!\d)/g, '₅'],
+      [/_6(?!\d)/g, '₆'],
+      [/_7(?!\d)/g, '₇'],
+      [/_8(?!\d)/g, '₈'],
+      [/_9(?!\d)/g, '₉'],
       
       // Greek letters
       [/\\alpha/g, 'α'], [/\\beta/g, 'β'], [/\\gamma/g, 'γ'], [/\\delta/g, 'δ'],
@@ -117,10 +142,14 @@ const LaTeXRenderer = ({ latex }) => {
       [/\\subset/g, '⊂'], [/\\supset/g, '⊃'], [/\\cap/g, '∩'], [/\\cup/g, '∪'],
       [/\\int/g, '∫'], [/\\sum/g, '∑'], [/\\prod/g, '∏'],
       
-      // Limits and integrals
-      [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="sum">∑<sub>$1</sub><sup>$2</sup></span>'],
-      [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="integral">∫<sub>$1</sub><sup>$2</sup></span>'],
-      [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub>$1</sub></span>'],
+      // Limits and integrals - improved
+      [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∑<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+      [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∫<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+      [/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∏<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+      [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub class="op-sub">$1</sub></span>'],
+      
+      // Simple sums and integrals
+      [/\\sum/g, '∑'], [/\\int/g, '∫'], [/\\prod/g, '∏'],
       
       // Parentheses
       [/\\left\(/g, '('], [/\\right\)/g, ')'],
@@ -128,7 +157,7 @@ const LaTeXRenderer = ({ latex }) => {
       [/\\left\{/g, '{'], [/\\right\}/g, '}'],
       
       // Text formatting
-      [/\\text\{([^}]+)\}/g, '<span class="text">$1</span>'],
+      [/\\text\{([^}]+)\}/g, '<span class="math-text">$1</span>'],
       [/\\mathbf\{([^}]+)\}/g, '<strong>$1</strong>'],
       [/\\mathit\{([^}]+)\}/g, '<em>$1</em>'],
       
@@ -1596,7 +1625,7 @@ const Block = ({
   // Recursive function to render sublists
   const renderSublist = (sublist, depth = 0) => {
     const bulletStyle = depth === 0 ? '◦' : depth === 1 ? '▪' : '▫';
-    const marginLeft = `${depth * 0.8}rem`; // Reduced spacing
+    const marginLeft = `${depth * 0.01 - 1}rem`; // Linear spacing: 0, 1.2rem, 2.4rem, 3.6rem...
     
     return (
       <div key={sublist.id || Math.random()} className="sublist-container" style={{ marginLeft }}>
@@ -1646,7 +1675,7 @@ const Block = ({
 
   // Recursive function to render editable sublists
   const renderEditableSublist = (sublist, listIndex, subIndex, depth = 0) => {
-    const marginLeft = `${depth * 0.8}rem`; // Reduced spacing
+    const marginLeft = `${depth * 0.1}rem`; // Linear spacing: 0, 1.2rem, 2.4rem, 3.6rem...
     
     return (
       <div key={`${listIndex}-${subIndex}-${depth}`} className="sublist-container" style={{ marginLeft }}>
