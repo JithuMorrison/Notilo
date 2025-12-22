@@ -514,7 +514,15 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     
     const data = {
       ...selectedFile,
-      exportedAt: new Date().toISOString()
+      exportedAt: new Date().toISOString(),
+      editorVersion: '2.0', // Version identifier for content structure
+      contentStructure: {
+        supportsNestedSublists: true,
+        supportsFormattedText: true,
+        supportsEquations: true,
+        supportsDrawings: true,
+        supportsStyledHeadings: true
+      }
     };
     
     const json = JSON.stringify(data, null, 2);
@@ -557,7 +565,15 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     
     const data = {
       ...currentFolder,
-      exportedAt: new Date().toISOString()
+      exportedAt: new Date().toISOString(),
+      editorVersion: '2.0', // Version identifier for content structure
+      contentStructure: {
+        supportsNestedSublists: true,
+        supportsFormattedText: true,
+        supportsEquations: true,
+        supportsDrawings: true,
+        supportsStyledHeadings: true
+      }
     };
     
     const json = JSON.stringify(data, null, 2);
@@ -573,6 +589,99 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     URL.revokeObjectURL(url);
   };
 
+  // Content migration function to handle old formats
+  const migrateBlockContent = (block) => {
+    if (!block || !block.type) return { block, migrated: false };
+    
+    let migrated = false;
+    let migratedBlock = { ...block };
+    
+    // Migrate old paragraph format to new string format
+    if (block.type === 'paragraph' && typeof block.content === 'object' && block.content.text) {
+      migratedBlock.content = block.content.text;
+      migrated = true;
+    }
+    
+    // Migrate old heading format if it's just a string
+    if (block.type === 'heading' && typeof block.content === 'string') {
+      migratedBlock.content = {
+        text: block.content,
+        fontSize: 24,
+        color: '#000000'
+      };
+      migrated = true;
+    }
+    
+    // Migrate old or corrupted list format
+    if (block.type === 'list') {
+      // If it's corrupted (has numeric keys) or is a string, reset it
+      if (typeof block.content === 'string' || 
+          (typeof block.content === 'object' && block.content && '0' in block.content)) {
+        migratedBlock.content = {
+          heading: 'List Heading',
+          items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }]
+        };
+        migrated = true;
+      }
+      // If it's an array (old format), convert it
+      else if (Array.isArray(block.content)) {
+        migratedBlock.content = {
+          heading: 'List',
+          items: block.content.map(item => 
+            typeof item === 'string' 
+              ? { text: item, sublists: [], images: [], videos: [] }
+              : item
+          )
+        };
+        migrated = true;
+      }
+      // If it's an object but missing proper structure, fix it
+      else if (typeof block.content === 'object' && block.content) {
+        const needsFixing = !block.content.items || !Array.isArray(block.content.items) ||
+                           block.content.items.some(item => typeof item === 'string');
+        
+        if (needsFixing) {
+          migratedBlock.content = {
+            heading: block.content.heading || 'List Heading',
+            items: Array.isArray(block.content.items) 
+              ? block.content.items.map(item => 
+                  typeof item === 'string' 
+                    ? { text: item, sublists: [], images: [], videos: [] }
+                    : {
+                        text: item.text || '',
+                        sublists: item.sublists || [],
+                        images: item.images || [],
+                        videos: item.videos || []
+                      }
+                )
+              : [{ text: 'Item 1', sublists: [], images: [], videos: [] }]
+          };
+          migrated = true;
+        }
+      }
+    }
+    
+    // Ensure equation blocks have proper structure
+    if (block.type === 'equation' && typeof block.content === 'string') {
+      migratedBlock.content = {
+        latex: block.content
+      };
+      migrated = true;
+    }
+    
+    // Ensure drawing blocks have proper structure
+    if (block.type === 'drawing' && (!block.content || typeof block.content !== 'object')) {
+      migratedBlock.content = {
+        strokes: [],
+        width: 400,
+        height: 300
+      };
+      migrated = true;
+    }
+    
+    return { block: migratedBlock, migrated };
+  };
+
   const importJson = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -581,13 +690,26 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target.result);
+        let migrationCount = 0;
         
         // Determine if it's a file or folder
         if (data.content !== undefined) {
-          // It's a file
+          // It's a file - migrate content if needed
+          let migratedContent = data.content;
+          
+          // If content is an array of blocks, migrate each block
+          if (Array.isArray(data.content)) {
+            migratedContent = data.content.map(block => {
+              const result = migrateBlockContent(block);
+              if (result.migrated) migrationCount++;
+              return result.block;
+            });
+          }
+          
           const newFile = {
             ...data,
             id: uuidv4(), // Generate new ID to avoid conflicts
+            content: migratedContent,
             createdAt: data.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
@@ -617,13 +739,37 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
           
           setFolders(prevFolders => updateFolders(prevFolders));
           setSelectedFile(newFile);
+          
+          // Show migration feedback
+          if (migrationCount > 0) {
+            alert(`File imported successfully! ${migrationCount} blocks were automatically updated to the new format.`);
+          } else {
+            alert('File imported successfully!');
+          }
         } else {
-          // It's a folder
+          // It's a folder - migrate all files in the folder
+          const migrateFilesInFolder = (folderData) => {
+            const migratedFolder = {
+              ...folderData,
+              files: (folderData.files || []).map(file => {
+                if (Array.isArray(file.content)) {
+                  const migratedBlocks = file.content.map(block => {
+                    const result = migrateBlockContent(block);
+                    if (result.migrated) migrationCount++;
+                    return result.block;
+                  });
+                  return { ...file, content: migratedBlocks };
+                }
+                return file;
+              }),
+              folders: (folderData.folders || []).map(migrateFilesInFolder)
+            };
+            return migratedFolder;
+          };
+          
           const newFolder = {
-            ...data,
+            ...migrateFilesInFolder(data),
             id: uuidv4(), // Generate new ID to avoid conflicts
-            folders: data.folders || [],
-            files: data.files || []
           };
           
           // Add to current folder
@@ -651,10 +797,17 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
           
           setFolders(prevFolders => updateFolders(prevFolders));
           setExpandedFolders(prev => ({ ...prev, [newFolder.id]: true }));
+          
+          // Show migration feedback
+          if (migrationCount > 0) {
+            alert(`Folder imported successfully! ${migrationCount} blocks were automatically updated to the new format.`);
+          } else {
+            alert('Folder imported successfully!');
+          }
         }
       } catch (error) {
         console.error('Error parsing JSON:', error);
-        alert('Invalid JSON file');
+        alert('Invalid JSON file. Please make sure the file is a valid JSON export from this editor.');
       }
     };
     reader.readAsText(file);
@@ -1030,8 +1183,18 @@ const Block = ({
 }) => {
   const [content, setContent] = useState(() => {
     if (block.type === 'list') {
+      // Handle various list content formats
+      if (!block.content) {
+        return { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
+      }
+      
+      // If it's a string or has numeric keys (corrupted), reset it
+      if (typeof block.content === 'string' || (typeof block.content === 'object' && '0' in block.content)) {
+        return { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
+      }
+      
+      // If it's an array (old format), convert it
       if (Array.isArray(block.content)) {
-        // Convert old format to new format
         return { 
           heading: 'List', 
           items: block.content.map(item => 
@@ -1041,10 +1204,29 @@ const Block = ({
           ) 
         };
       }
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { heading: 'List', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
+      
+      // If it's a proper object, ensure it has the right structure
+      if (typeof block.content === 'object') {
+        return {
+          heading: block.content.heading || 'List Heading',
+          items: Array.isArray(block.content.items) 
+            ? block.content.items.map(item => 
+                typeof item === 'string' 
+                  ? { text: item, sublists: [], images: [], videos: [] }
+                  : {
+                      text: item.text || '',
+                      sublists: item.sublists || [],
+                      images: item.images || [],
+                      videos: item.videos || []
+                    }
+              )
+            : [{ text: 'Item 1', sublists: [], images: [], videos: [] }]
+        };
+      }
+      
+      return { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
     }
+    
     if (block.type === 'image') {
       return block.content && typeof block.content === 'object' 
         ? block.content 
@@ -1137,8 +1319,12 @@ const Block = ({
   };
 
   const handleListHeadingChange = (e) => {
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent,
       heading: e.target.value 
     };
     setContent(newContent);
@@ -1146,10 +1332,24 @@ const Block = ({
   };
 
   const handleListChange = (listIndex, value) => {
-    const newItems = [...(content?.items || [])];
-    newItems[listIndex] = { ...newItems[listIndex], text: value };
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
+    
+    // Ensure the item exists and has proper structure
+    if (!newItems[listIndex]) {
+      newItems[listIndex] = { text: '', sublists: [], images: [], videos: [] };
+    }
+    
+    newItems[listIndex] = { 
+      ...newItems[listIndex], 
+      text: value 
+    };
+    
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1157,9 +1357,13 @@ const Block = ({
   };
 
   const addListItem = () => {
-    const newItems = [...(content?.items || []), { text: 'New item', sublists: [], images: [], videos: [] }];
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || []), { text: 'New item', sublists: [], images: [], videos: [] }];
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1167,14 +1371,18 @@ const Block = ({
   };
 
   const removeListItem = (listIndex) => {
-    const currentItems = content?.items || [];
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const currentItems = safeContent.items || [];
     if (currentItems.length <= 1) {
       deleteBlock(block.id);
       return;
     }
     const newItems = currentItems.filter((_, i) => i !== listIndex);
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1182,13 +1390,23 @@ const Block = ({
   };
 
   const addSublist = (listIndex) => {
-    const newItems = [...(content?.items || [])];
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
+    
+    // Ensure the item exists and has proper structure
+    if (!newItems[listIndex]) {
+      newItems[listIndex] = { text: '', sublists: [], images: [], videos: [] };
+    }
+    
     newItems[listIndex] = {
       ...newItems[listIndex],
       sublists: [...(newItems[listIndex].sublists || []), { text: 'Subitem', sublists: [], images: [], videos: [] }]
     };
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1196,10 +1414,29 @@ const Block = ({
   };
 
   const updateSublist = (listIndex, subIndex, value) => {
-    const newItems = [...(content?.items || [])];
-    newItems[listIndex].sublists[subIndex] = { ...newItems[listIndex].sublists[subIndex], text: value };
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
+    
+    // Ensure proper structure exists
+    if (!newItems[listIndex]) {
+      newItems[listIndex] = { text: '', sublists: [], images: [], videos: [] };
+    }
+    if (!newItems[listIndex].sublists) {
+      newItems[listIndex].sublists = [];
+    }
+    if (!newItems[listIndex].sublists[subIndex]) {
+      newItems[listIndex].sublists[subIndex] = { text: '', sublists: [], images: [], videos: [] };
+    }
+    
+    newItems[listIndex].sublists[subIndex] = { 
+      ...newItems[listIndex].sublists[subIndex], 
+      text: value 
+    };
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1207,10 +1444,16 @@ const Block = ({
   };
 
   const removeSublist = (listIndex, subIndex) => {
-    const newItems = [...(content?.items || [])];
-    newItems[listIndex].sublists = newItems[listIndex].sublists.filter((_, i) => i !== subIndex);
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
+    if (newItems[listIndex] && newItems[listIndex].sublists) {
+      newItems[listIndex].sublists = newItems[listIndex].sublists.filter((_, i) => i !== subIndex);
+    }
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1251,11 +1494,25 @@ const Block = ({
   };
 
   const addNestedSublist = (listIndex, subIndex, depth, text = 'Sub-subitem') => {
-    const newItems = [...(content?.items || [])];
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
     
     // Navigate to the correct nested level
     let currentItem = newItems[listIndex];
+    if (!currentItem) {
+      currentItem = { text: '', sublists: [], images: [], videos: [] };
+      newItems[listIndex] = currentItem;
+    }
+    
+    // Navigate through the subIndex array to find the right sublist
     for (let i = 0; i < subIndex.length; i++) {
+      if (!currentItem.sublists) currentItem.sublists = [];
+      if (!currentItem.sublists[subIndex[i]]) {
+        currentItem.sublists[subIndex[i]] = { text: '', sublists: [], images: [], videos: [] };
+      }
       currentItem = currentItem.sublists[subIndex[i]];
     }
     
@@ -1271,7 +1528,7 @@ const Block = ({
     });
     
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1279,18 +1536,28 @@ const Block = ({
   };
 
   const updateNestedSublist = (listIndex, subIndex, depth, value) => {
-    const newItems = [...(content?.items || [])];
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
     
     // Navigate to the correct nested level
     let currentItem = newItems[listIndex];
+    if (!currentItem) return;
+    
+    // Navigate through the subIndex array to find the right sublist
     for (let i = 0; i < subIndex.length - 1; i++) {
+      if (!currentItem.sublists || !currentItem.sublists[subIndex[i]]) return;
       currentItem = currentItem.sublists[subIndex[i]];
     }
     
-    currentItem.sublists[subIndex[subIndex.length - 1]].text = value;
+    if (currentItem.sublists && currentItem.sublists[subIndex[subIndex.length - 1]]) {
+      currentItem.sublists[subIndex[subIndex.length - 1]].text = value;
+    }
     
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1298,18 +1565,28 @@ const Block = ({
   };
 
   const removeNestedSublist = (listIndex, subIndex, depth) => {
-    const newItems = [...(content?.items || [])];
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
     
     // Navigate to the correct nested level
     let currentItem = newItems[listIndex];
+    if (!currentItem) return;
+    
+    // Navigate through the subIndex array to find the parent of the item to remove
     for (let i = 0; i < subIndex.length - 1; i++) {
+      if (!currentItem.sublists || !currentItem.sublists[subIndex[i]]) return;
       currentItem = currentItem.sublists[subIndex[i]];
     }
     
-    currentItem.sublists = currentItem.sublists.filter((_, i) => i !== subIndex[subIndex.length - 1]);
+    if (currentItem.sublists) {
+      currentItem.sublists = currentItem.sublists.filter((_, i) => i !== subIndex[subIndex.length - 1]);
+    }
     
     const newContent = { 
-      ...(content || {}), 
+      ...safeContent, 
       items: newItems 
     };
     setContent(newContent);
@@ -1762,16 +2039,49 @@ const Block = ({
           </p>
         );
       case 'list':
-        const safeContent = content && typeof content === 'object' 
-          ? content 
-          : { heading: 'List', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
-        const safeItems = Array.isArray(safeContent.items) 
-          ? safeContent.items.map(item => 
-              typeof item === 'string' 
-                ? { text: item, sublists: [], images: [], videos: [] }
-                : item
-            )
-          : [{ text: 'Item 1', sublists: [], images: [], videos: [] }];
+        // Ensure proper content structure for lists
+        const safeContent = (() => {
+          if (!content) {
+            return { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
+          }
+          
+          // If content is a string or array (old format), convert it
+          if (typeof content === 'string' || Array.isArray(content)) {
+            return { 
+              heading: 'List Heading', 
+              items: Array.isArray(content) 
+                ? content.map(item => 
+                    typeof item === 'string' 
+                      ? { text: item, sublists: [], images: [], videos: [] }
+                      : item
+                  )
+                : [{ text: 'Item 1', sublists: [], images: [], videos: [] }]
+            };
+          }
+          
+          // If content is an object but missing structure, fix it
+          if (typeof content === 'object') {
+            return {
+              heading: content.heading || 'List Heading',
+              items: Array.isArray(content.items) 
+                ? content.items.map(item => 
+                    typeof item === 'string' 
+                      ? { text: item, sublists: [], images: [], videos: [] }
+                      : {
+                          text: item.text || '',
+                          sublists: item.sublists || [],
+                          images: item.images || [],
+                          videos: item.videos || []
+                        }
+                  )
+                : [{ text: 'Item 1', sublists: [], images: [], videos: [] }]
+            };
+          }
+          
+          return { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] };
+        })();
+        
+        const safeItems = safeContent.items || [];
         
         return isEditing ? (
           <div className="editing-block">
