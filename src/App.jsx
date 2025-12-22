@@ -44,7 +44,7 @@ function App() {
 
   return (
     <div className="app">
-      <button style={{position:'absolute', top:'10px',left:'320px',zIndex:'99'}} className='gbtn' onClick={toggleSection}>Make Page</button>
+      <button style={{position:'absolute', top:'10px',left:'700px',zIndex:'99'}} className='gbtn' onClick={toggleSection}>{currentSection==='notes' ? 'Make Page' : 'Notes Page'}</button>
       {currentSection === 'make' && (<WordEditor />)}
       {currentSection === 'notes' && (
         <>
