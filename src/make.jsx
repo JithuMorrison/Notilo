@@ -77,7 +77,9 @@ export default function MarkdownEditor() {
     }).join('');
     
     // Preserve spaces
-    html = html.replace(/ /g, '&nbsp;');
+    html = html.replace(/>([^<]+)</g, (match, text) => {
+      return '>' + text.replace(/ /g, '&nbsp;') + '<';
+    });
     
     return html;
   };
