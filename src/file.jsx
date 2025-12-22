@@ -16,34 +16,289 @@ const ItemTypes = {
 };
 
 const parseContent = (content) => {
-  const regex = /<link>(.*?)<\/link>/g;
+  if (!content) return content;
+  
   const parts = [];
   let lastIndex = 0;
+  
+  // Combined regex for all formatting tags
+  const formatRegex = /<(link|b|i|c=([^>]+))>(.*?)<\/(?:link|b|i|c)>/g;
   let match;
 
-  while ((match = regex.exec(content)) !== null) {
-    const [fullMatch, linkText] = match;
+  while ((match = formatRegex.exec(content)) !== null) {
+    const [fullMatch, tag, colorValue, innerText] = match;
     const start = match.index;
 
+    // Add text before this match
     if (start > lastIndex) {
       parts.push(content.slice(lastIndex, start));
     }
 
-    parts.push(
-      <a key={start} href={linkText} target="_blank" rel="noopener noreferrer" style={{ color: '#007bff' }}>
-        {linkText}
-      </a>
-    );
+    // Handle different tag types
+    if (tag === 'link') {
+      parts.push(
+        <a key={start} href={innerText} target="_blank" rel="noopener noreferrer" style={{ color: '#007bff' }}>
+          {innerText}
+        </a>
+      );
+    } else if (tag === 'b') {
+      parts.push(
+        <strong key={start}>
+          {innerText}
+        </strong>
+      );
+    } else if (tag === 'i') {
+      parts.push(
+        <em key={start}>
+          {innerText}
+        </em>
+      );
+    } else if (tag.startsWith('c=')) {
+      parts.push(
+        <span key={start} style={{ color: colorValue }}>
+          {innerText}
+        </span>
+      );
+    }
 
-    lastIndex = regex.lastIndex;
+    lastIndex = formatRegex.lastIndex;
   }
 
+  // Add remaining text
   if (lastIndex < content.length) {
     parts.push(content.slice(lastIndex));
   }
 
-  return parts;
+  return parts.length > 0 ? parts : content;
 }
+
+// LaTeX Renderer Component
+const LaTeXRenderer = ({ latex }) => {
+  // Simple LaTeX to HTML converter for basic equations
+  const renderLaTeX = (latex) => {
+    if (!latex) return '';
+    
+    let html = latex;
+    
+    // Replace common LaTeX commands with HTML/Unicode equivalents
+    const replacements = [
+      // Fractions
+      [/\\frac\{([^}]+)\}\{([^}]+)\}/g, '<span class="fraction"><span class="numerator">$1</span><span class="denominator">$2</span></span>'],
+      
+      // Superscripts and subscripts
+      [/\^(\w+|\{[^}]+\})/g, (match, p1) => `<sup>${p1.replace(/[{}]/g, '')}</sup>`],
+      [/_(\w+|\{[^}]+\})/g, (match, p1) => `<sub>${p1.replace(/[{}]/g, '')}</sub>`],
+      
+      // Square roots
+      [/\\sqrt\{([^}]+)\}/g, '√($1)'],
+      [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<sup>$1</sup>√($2)'],
+      
+      // Greek letters
+      [/\\alpha/g, 'α'], [/\\beta/g, 'β'], [/\\gamma/g, 'γ'], [/\\delta/g, 'δ'],
+      [/\\epsilon/g, 'ε'], [/\\zeta/g, 'ζ'], [/\\eta/g, 'η'], [/\\theta/g, 'θ'],
+      [/\\iota/g, 'ι'], [/\\kappa/g, 'κ'], [/\\lambda/g, 'λ'], [/\\mu/g, 'μ'],
+      [/\\nu/g, 'ν'], [/\\xi/g, 'ξ'], [/\\pi/g, 'π'], [/\\rho/g, 'ρ'],
+      [/\\sigma/g, 'σ'], [/\\tau/g, 'τ'], [/\\upsilon/g, 'υ'], [/\\phi/g, 'φ'],
+      [/\\chi/g, 'χ'], [/\\psi/g, 'ψ'], [/\\omega/g, 'ω'],
+      
+      // Capital Greek letters
+      [/\\Alpha/g, 'Α'], [/\\Beta/g, 'Β'], [/\\Gamma/g, 'Γ'], [/\\Delta/g, 'Δ'],
+      [/\\Epsilon/g, 'Ε'], [/\\Zeta/g, 'Ζ'], [/\\Eta/g, 'Η'], [/\\Theta/g, 'Θ'],
+      [/\\Iota/g, 'Ι'], [/\\Kappa/g, 'Κ'], [/\\Lambda/g, 'Λ'], [/\\Mu/g, 'Μ'],
+      [/\\Nu/g, 'Ν'], [/\\Xi/g, 'Ξ'], [/\\Pi/g, 'Π'], [/\\Rho/g, 'Ρ'],
+      [/\\Sigma/g, 'Σ'], [/\\Tau/g, 'Τ'], [/\\Upsilon/g, 'Υ'], [/\\Phi/g, 'Φ'],
+      [/\\Chi/g, 'Χ'], [/\\Psi/g, 'Ψ'], [/\\Omega/g, 'Ω'],
+      
+      // Mathematical symbols
+      [/\\infty/g, '∞'], [/\\partial/g, '∂'], [/\\nabla/g, '∇'],
+      [/\\pm/g, '±'], [/\\mp/g, '∓'], [/\\times/g, '×'], [/\\div/g, '÷'],
+      [/\\neq/g, '≠'], [/\\leq/g, '≤'], [/\\geq/g, '≥'], [/\\approx/g, '≈'],
+      [/\\equiv/g, '≡'], [/\\propto/g, '∝'], [/\\in/g, '∈'], [/\\notin/g, '∉'],
+      [/\\subset/g, '⊂'], [/\\supset/g, '⊃'], [/\\cap/g, '∩'], [/\\cup/g, '∪'],
+      [/\\int/g, '∫'], [/\\sum/g, '∑'], [/\\prod/g, '∏'],
+      
+      // Limits and integrals
+      [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="sum">∑<sub>$1</sub><sup>$2</sup></span>'],
+      [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="integral">∫<sub>$1</sub><sup>$2</sup></span>'],
+      [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub>$1</sub></span>'],
+      
+      // Parentheses
+      [/\\left\(/g, '('], [/\\right\)/g, ')'],
+      [/\\left\[/g, '['], [/\\right\]/g, ']'],
+      [/\\left\{/g, '{'], [/\\right\}/g, '}'],
+      
+      // Text formatting
+      [/\\text\{([^}]+)\}/g, '<span class="text">$1</span>'],
+      [/\\mathbf\{([^}]+)\}/g, '<strong>$1</strong>'],
+      [/\\mathit\{([^}]+)\}/g, '<em>$1</em>'],
+      
+      // Clean up extra spaces and backslashes
+      [/\\\\/g, ''], // Remove double backslashes
+      [/\s+/g, ' '], // Normalize spaces
+    ];
+    
+    replacements.forEach(([pattern, replacement]) => {
+      html = html.replace(pattern, replacement);
+    });
+    
+    return html;
+  };
+  
+  return (
+    <div 
+      className="latex-rendered" 
+      dangerouslySetInnerHTML={{ __html: renderLaTeX(latex) }}
+    />
+  );
+};
+const DrawingCanvas = ({ content, onUpdate, isEditing }) => {
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentStroke, setCurrentStroke] = useState(null);
+  const canvasRef = useRef(null);
+  
+  const safeContent = content || { strokes: [], width: 400, height: 300 };
+  
+  useEffect(() => {
+    redrawCanvas();
+  }, [safeContent.strokes, safeContent.width, safeContent.height]);
+  
+  const redrawCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    safeContent.strokes.forEach(stroke => {
+      if (stroke.points && stroke.points.length > 1) {
+        ctx.strokeStyle = stroke.color || '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        stroke.points.forEach(point => {
+          ctx.lineTo(point.x, point.y);
+        });
+        ctx.stroke();
+      }
+    });
+  };
+  
+  const startDrawing = (e) => {
+    if (!isEditing) return;
+    
+    const canvas = e.target;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const newStroke = { points: [{ x, y }], color: '#000000' };
+    setCurrentStroke(newStroke);
+    setIsDrawing(true);
+  };
+  
+  const draw = (e) => {
+    if (!isDrawing || !currentStroke || !isEditing) return;
+    
+    const canvas = e.target;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const updatedStroke = {
+      ...currentStroke,
+      points: [...currentStroke.points, { x, y }]
+    };
+    setCurrentStroke(updatedStroke);
+    
+    // Draw on canvas immediately
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    if (updatedStroke.points.length > 1) {
+      const prevPoint = updatedStroke.points[updatedStroke.points.length - 2];
+      const currPoint = updatedStroke.points[updatedStroke.points.length - 1];
+      
+      ctx.beginPath();
+      ctx.moveTo(prevPoint.x, prevPoint.y);
+      ctx.lineTo(currPoint.x, currPoint.y);
+      ctx.stroke();
+    }
+  };
+  
+  const stopDrawing = () => {
+    if (isDrawing && currentStroke && isEditing) {
+      const newContent = {
+        ...safeContent,
+        strokes: [...safeContent.strokes, currentStroke]
+      };
+      onUpdate(newContent);
+    }
+    setIsDrawing(false);
+    setCurrentStroke(null);
+  };
+  
+  const clearCanvas = () => {
+    const newContent = {
+      ...safeContent,
+      strokes: []
+    };
+    onUpdate(newContent);
+  };
+  
+  const updateDimensions = (field, value) => {
+    const newContent = {
+      ...safeContent,
+      [field]: parseInt(value)
+    };
+    onUpdate(newContent);
+  };
+  
+  return (
+    <div className="drawing-canvas-container">
+      <canvas
+        ref={canvasRef}
+        width={safeContent.width || 400}
+        height={safeContent.height || 300}
+        style={{ 
+          border: '1px solid #ccc', 
+          cursor: isEditing ? 'crosshair' : 'default' 
+        }}
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+      />
+      {isEditing && (
+        <div className="drawing-tools">
+          <button onClick={clearCanvas}>Clear</button>
+          <label>Width: 
+            <input
+              type="number"
+              value={safeContent.width || 400}
+              onChange={(e) => updateDimensions('width', e.target.value)}
+              min="200"
+              max="800"
+            />
+          </label>
+          <label>Height: 
+            <input
+              type="number"
+              value={safeContent.height || 300}
+              onChange={(e) => updateDimensions('height', e.target.value)}
+              min="150"
+              max="600"
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, currentPath }) => {
   const [fileName, setFileName] = useState('');
@@ -125,7 +380,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
                type === 'video' ? { videos: [] } :
                type === 'equation' ? { latex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' } :
                type === 'drawing' ? { strokes: [], width: 400, height: 300 } :
-               { text: 'Enter Text', formatting: [] },
+               'Enter Text',
     };
   
     const newBlocks = [...blocks];
@@ -147,7 +402,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
                      newType === 'heading' ? { text: 'Heading', fontSize: 24, color: '#000000' } :
                      newType === 'equation' ? { latex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' } :
                      newType === 'drawing' ? { strokes: [], width: 400, height: 300 } :
-                     { text: 'Enter Text', formatting: [] }
+                     'Enter Text'
           };
         }
         return { 
@@ -805,11 +1060,6 @@ const Block = ({
         ? block.content 
         : { text: block.content || 'Heading', fontSize: 24, color: '#000000' };
     }
-    if (block.type === 'paragraph') {
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { text: block.content || 'Enter Text', formatting: [] };
-    }
     if (block.type === 'equation') {
       return block.content && typeof block.content === 'object' 
         ? block.content 
@@ -820,6 +1070,7 @@ const Block = ({
         ? block.content 
         : { strokes: [], width: 400, height: 300 };
     }
+    // For paragraph and other simple text types
     return block.content || '';
   });
 
@@ -999,10 +1250,26 @@ const Block = ({
     updateBlock(block.id, newContent);
   };
 
-  const removeSubSublist = (listIndex, subIndex, subSubIndex) => {
+  const addNestedSublist = (listIndex, subIndex, depth, text = 'Sub-subitem') => {
     const newItems = [...(content?.items || [])];
-    newItems[listIndex].sublists[subIndex].sublists = 
-      newItems[listIndex].sublists[subIndex].sublists.filter((_, i) => i !== subSubIndex);
+    
+    // Navigate to the correct nested level
+    let currentItem = newItems[listIndex];
+    for (let i = 0; i < subIndex.length; i++) {
+      currentItem = currentItem.sublists[subIndex[i]];
+    }
+    
+    if (!currentItem.sublists) {
+      currentItem.sublists = [];
+    }
+    
+    currentItem.sublists.push({ 
+      text, 
+      sublists: [], 
+      images: [], 
+      videos: [] 
+    });
+    
     const newContent = { 
       ...(content || {}), 
       items: newItems 
@@ -1011,67 +1278,122 @@ const Block = ({
     updateBlock(block.id, newContent);
   };
 
-  // Text formatting functions
-  const applyFormatting = (text, start, end, format) => {
-    const newFormatting = [...(content?.formatting || [])];
-    const existingIndex = newFormatting.findIndex(f => 
-      f.start === start && f.end === end && f.type === format.type
-    );
+  const updateNestedSublist = (listIndex, subIndex, depth, value) => {
+    const newItems = [...(content?.items || [])];
     
-    if (existingIndex >= 0) {
-      // Remove existing formatting
-      newFormatting.splice(existingIndex, 1);
-    } else {
-      // Add new formatting
-      newFormatting.push({ start, end, ...format });
+    // Navigate to the correct nested level
+    let currentItem = newItems[listIndex];
+    for (let i = 0; i < subIndex.length - 1; i++) {
+      currentItem = currentItem.sublists[subIndex[i]];
     }
     
-    const newContent = {
-      ...(content || {}),
-      formatting: newFormatting
+    currentItem.sublists[subIndex[subIndex.length - 1]].text = value;
+    
+    const newContent = { 
+      ...(content || {}), 
+      items: newItems 
     };
     setContent(newContent);
     updateBlock(block.id, newContent);
   };
 
-  const renderFormattedText = (text, formatting = []) => {
-    if (!formatting || formatting.length === 0) return text;
+  const removeNestedSublist = (listIndex, subIndex, depth) => {
+    const newItems = [...(content?.items || [])];
     
-    const parts = [];
-    let lastIndex = 0;
-    
-    // Sort formatting by start position
-    const sortedFormatting = [...formatting].sort((a, b) => a.start - b.start);
-    
-    sortedFormatting.forEach((format, i) => {
-      // Add text before this format
-      if (format.start > lastIndex) {
-        parts.push(text.slice(lastIndex, format.start));
-      }
-      
-      // Add formatted text
-      const formattedText = text.slice(format.start, format.end);
-      const style = {};
-      
-      if (format.type === 'bold') style.fontWeight = 'bold';
-      if (format.type === 'color') style.color = format.color;
-      if (format.type === 'fontSize') style.fontSize = format.size + 'px';
-      
-      parts.push(
-        <span key={i} style={style}>
-          {formattedText}
-        </span>
-      );
-      
-      lastIndex = format.end;
-    });
-    
-    // Add remaining text
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
+    // Navigate to the correct nested level
+    let currentItem = newItems[listIndex];
+    for (let i = 0; i < subIndex.length - 1; i++) {
+      currentItem = currentItem.sublists[subIndex[i]];
     }
     
-    return parts;
+    currentItem.sublists = currentItem.sublists.filter((_, i) => i !== subIndex[subIndex.length - 1]);
+    
+    const newContent = { 
+      ...(content || {}), 
+      items: newItems 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
+  };
+
+  // Recursive function to render sublists
+  const renderSublist = (sublist, depth = 0) => {
+    const bulletStyle = depth === 0 ? '◦' : depth === 1 ? '▪' : '▫';
+    const marginLeft = `${depth * 0.8}rem`; // Reduced spacing
+    
+    return (
+      <div key={sublist.id || Math.random()} className="sublist-container" style={{ marginLeft }}>
+        <div className="sublist-item-display">
+          {bulletStyle} {sublist.text || ''}
+        </div>
+        
+        {/* Recursively render nested sublists */}
+        {sublist.sublists && sublist.sublists.length > 0 && (
+          <div className="nested-sublists-display">
+            {sublist.sublists.map((nestedSublist, k) => 
+              renderSublist(nestedSublist, depth + 1)
+            )}
+          </div>
+        )}
+        
+        {/* Images */}
+        {sublist.images && sublist.images.length > 0 && (
+          <div className="item-images-display">
+            {sublist.images.map((img, j) => (
+              <img key={j} src={img.url} alt="" style={{ width: img.width, height: img.height, margin: '5px' }} />
+            ))}
+          </div>
+        )}
+        
+        {/* Videos */}
+        {sublist.videos && sublist.videos.length > 0 && (
+          <div className="item-videos-display">
+            {sublist.videos.map((vid, j) => (
+              <iframe 
+                key={j} 
+                src={vid.url} 
+                width={vid.width} 
+                height={vid.height}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={`Video ${j + 1}`}
+                style={{ margin: '5px' }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Recursive function to render editable sublists
+  const renderEditableSublist = (sublist, listIndex, subIndex, depth = 0) => {
+    const marginLeft = `${depth * 0.8}rem`; // Reduced spacing
+    
+    return (
+      <div key={`${listIndex}-${subIndex}-${depth}`} className="sublist-container" style={{ marginLeft }}>
+        <div className="sublist-item">
+          <input
+            type="text"
+            value={sublist.text || ''}
+            onChange={(e) => updateNestedSublist(listIndex, subIndex, depth, e.target.value)}
+            placeholder="Subitem"
+          />
+          <button onClick={() => removeNestedSublist(listIndex, subIndex, depth)}>×</button>
+          <button onClick={() => addNestedSublist(listIndex, subIndex, depth)}>+ Sub</button>
+        </div>
+        
+        {/* Recursively render nested sublists */}
+        {sublist.sublists && sublist.sublists.length > 0 && (
+          <div className="nested-sublists">
+            {sublist.sublists.map((nestedSublist, k) => 
+              renderEditableSublist(nestedSublist, listIndex, [...subIndex, k], depth + 1)
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const addImageToItem = (listIndex, imageUrl, width = 200, height = 200) => {
@@ -1370,9 +1692,9 @@ const Block = ({
           </h3>
         );
       case 'paragraph':
-        const safeParagraphContent = content && typeof content === 'object' 
+        const safeParagraphContent = typeof content === 'string' 
           ? content 
-          : { text: content || 'Enter Text', formatting: [] };
+          : (content && content.text) || 'Enter Text';
           
         return isEditing ? (
           <div className="editing-block">
@@ -1390,50 +1712,19 @@ const Block = ({
             </select><br/>
             <div className="paragraph-controls">
               <textarea
-                value={safeParagraphContent.text || ''}
+                value={safeParagraphContent}
                 onChange={(e) => {
-                  const newContent = { 
-                    ...(content || {}), 
-                    text: e.target.value 
-                  };
-                  setContent(newContent);
-                  updateBlock(block.id, newContent);
+                  setContent(e.target.value);
+                  updateBlock(block.id, e.target.value);
                 }}
                 className="block-paragraph"
-                placeholder="Type something..."
+                placeholder="Type something... Use <b>bold</b>, <i>italic</i>, <c=red>colored text</c>, <link>url</link>"
                 autoFocus
               />
-              <div className="formatting-controls">
-                <button 
-                  onClick={() => {
-                    const textarea = document.activeElement;
-                    if (textarea.selectionStart !== textarea.selectionEnd) {
-                      applyFormatting(
-                        safeParagraphContent.text, 
-                        textarea.selectionStart, 
-                        textarea.selectionEnd, 
-                        { type: 'bold' }
-                      );
-                    }
-                  }}
-                >
-                  Bold
-                </button>
-                <input
-                  type="color"
-                  onChange={(e) => {
-                    const textarea = document.activeElement;
-                    if (textarea.selectionStart !== textarea.selectionEnd) {
-                      applyFormatting(
-                        safeParagraphContent.text, 
-                        textarea.selectionStart, 
-                        textarea.selectionEnd, 
-                        { type: 'color', color: e.target.value }
-                      );
-                    }
-                  }}
-                  title="Text Color"
-                />
+              <div className="formatting-help">
+                <small>
+                  Formatting: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;c=red&gt;color&lt;/c&gt;, &lt;link&gt;url&lt;/link&gt;
+                </small>
               </div>
             </div>
             <button 
@@ -1447,49 +1738,18 @@ const Block = ({
         ) : editMode ? (
           <div className="paragraph-controls">
             <textarea
-              value={safeParagraphContent.text || ''}
+              value={safeParagraphContent}
               onChange={(e) => {
-                const newContent = { 
-                  ...(content || {}), 
-                  text: e.target.value 
-                };
-                setContent(newContent);
-                updateBlock(block.id, newContent);
+                setContent(e.target.value);
+                updateBlock(block.id, e.target.value);
               }}
               className="block-paragraph"
-              placeholder="Type something..."
+              placeholder="Type something... Use <b>bold</b>, <i>italic</i>, <c=red>colored text</c>, <link>url</link>"
             />
-            <div className="formatting-controls">
-              <button 
-                onClick={() => {
-                  const textarea = document.activeElement;
-                  if (textarea.selectionStart !== textarea.selectionEnd) {
-                    applyFormatting(
-                      safeParagraphContent.text, 
-                      textarea.selectionStart, 
-                      textarea.selectionEnd, 
-                      { type: 'bold' }
-                    );
-                  }
-                }}
-              >
-                Bold
-              </button>
-              <input
-                type="color"
-                onChange={(e) => {
-                  const textarea = document.activeElement;
-                  if (textarea.selectionStart !== textarea.selectionEnd) {
-                    applyFormatting(
-                      safeParagraphContent.text, 
-                      textarea.selectionStart, 
-                      textarea.selectionEnd, 
-                      { type: 'color', color: e.target.value }
-                    );
-                  }
-                }}
-                title="Text Color"
-              />
+            <div className="formatting-help">
+              <small>
+                Formatting: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;c=red&gt;color&lt;/c&gt;, &lt;link&gt;url&lt;/link&gt;
+              </small>
             </div>
           </div>
         ) : (
@@ -1498,7 +1758,7 @@ const Block = ({
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
-            {renderFormattedText(safeParagraphContent.text || '', safeParagraphContent.formatting)}
+            {parseContent(safeParagraphContent)}
           </p>
         );
       case 'list':
@@ -1551,37 +1811,9 @@ const Block = ({
                 {/* Sublists */}
                 {item.sublists && item.sublists.length > 0 && (
                   <div className="sublists">
-                    {item.sublists.map((subitem, j) => (
-                      <div key={j} className="sublist-container">
-                        <div className="sublist-item">
-                          <input
-                            type="text"
-                            value={subitem.text || ''}
-                            onChange={(e) => updateSublist(i, j, e.target.value)}
-                            placeholder="Subitem"
-                          />
-                          <button onClick={() => removeSublist(i, j)}>×</button>
-                          <button onClick={() => addSublistToSublist(i, j)}>+ Sub</button>
-                        </div>
-                        
-                        {/* Nested sublists */}
-                        {subitem.sublists && subitem.sublists.length > 0 && (
-                          <div className="nested-sublists">
-                            {subitem.sublists.map((subSubitem, k) => (
-                              <div key={k} className="nested-sublist-item">
-                                <input
-                                  type="text"
-                                  value={subSubitem.text || ''}
-                                  onChange={(e) => updateSubSublist(i, j, k, e.target.value)}
-                                  placeholder="Sub-subitem"
-                                />
-                                <button onClick={() => removeSubSublist(i, j, k)}>×</button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {item.sublists.map((subitem, j) => 
+                      renderEditableSublist(subitem, i, [j], 0)
+                    )}
                   </div>
                 )}
                 
@@ -1782,24 +2014,9 @@ const Block = ({
                 {/* Sublists */}
                 {item.sublists && item.sublists.length > 0 && (
                   <div className="sublists-display">
-                    {item.sublists.map((subitem, j) => (
-                      <div key={j} className="sublist-display-container">
-                        <div className="sublist-item-display">
-                          &nbsp;&nbsp;◦ {subitem.text || ''}
-                        </div>
-                        
-                        {/* Nested sublists display */}
-                        {subitem.sublists && subitem.sublists.length > 0 && (
-                          <div className="nested-sublists-display">
-                            {subitem.sublists.map((subSubitem, k) => (
-                              <div key={k} className="nested-sublist-item-display">
-                                &nbsp;&nbsp;&nbsp;&nbsp;▪ {subSubitem.text || ''}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {item.sublists.map((subitem, j) => 
+                      renderSublist(subitem, 0)
+                    )}
                   </div>
                 )}
                 
@@ -2081,12 +2298,13 @@ const Block = ({
                   updateBlock(block.id, newContent);
                 }}
                 className="equation-input"
-                placeholder="Enter LaTeX equation..."
+                placeholder="Enter LaTeX equation... (e.g., E = mc^2, \\frac{a}{b}, \\sum_{i=1}^n x_i)"
                 rows="3"
                 autoFocus
               />
               <div className="equation-preview">
-                <div>Preview: {safeEquationContent.latex || ''}</div>
+                <strong>Preview:</strong>
+                <LaTeXRenderer latex={safeEquationContent.latex || ''} />
               </div>
             </div>
             <button 
@@ -2114,7 +2332,8 @@ const Block = ({
               rows="3"
             />
             <div className="equation-preview">
-              <div>Preview: {safeEquationContent.latex || ''}</div>
+              <strong>Preview:</strong>
+              <LaTeXRenderer latex={safeEquationContent.latex || ''} />
             </div>
           </div>
         ) : (
@@ -2123,9 +2342,7 @@ const Block = ({
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
-            <div className="equation-rendered">
-              {safeEquationContent.latex || ''}
-            </div>
+            <LaTeXRenderer latex={safeEquationContent.latex || ''} />
           </div>
         );
       case 'drawing':
@@ -2147,75 +2364,14 @@ const Block = ({
               <option value="equation">Equation</option>
               <option value="drawing">Drawing</option>
             </select><br/>
-            <div className="drawing-controls">
-              <canvas
-                width={safeDrawingContent.width || 400}
-                height={safeDrawingContent.height || 300}
-                style={{ border: '1px solid #ccc', cursor: 'crosshair' }}
-                ref={(canvas) => {
-                  if (canvas && safeDrawingContent.strokes) {
-                    const ctx = canvas.getContext('2d');
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    safeDrawingContent.strokes.forEach(stroke => {
-                      if (stroke.points && stroke.points.length > 1) {
-                        ctx.strokeStyle = stroke.color || '#000000';
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-                        stroke.points.forEach(point => {
-                          ctx.lineTo(point.x, point.y);
-                        });
-                        ctx.stroke();
-                      }
-                    });
-                  }
-                }}
-              />
-              <div className="drawing-tools">
-                <button onClick={() => {
-                  const newContent = {
-                    ...(content || {}),
-                    strokes: []
-                  };
-                  setContent(newContent);
-                  updateBlock(block.id, newContent);
-                }}>
-                  Clear
-                </button>
-                <label>Width: 
-                  <input
-                    type="number"
-                    value={safeDrawingContent.width || 400}
-                    onChange={(e) => {
-                      const newContent = {
-                        ...(content || {}),
-                        width: parseInt(e.target.value)
-                      };
-                      setContent(newContent);
-                      updateBlock(block.id, newContent);
-                    }}
-                    min="200"
-                    max="800"
-                  />
-                </label>
-                <label>Height: 
-                  <input
-                    type="number"
-                    value={safeDrawingContent.height || 300}
-                    onChange={(e) => {
-                      const newContent = {
-                        ...(content || {}),
-                        height: parseInt(e.target.value)
-                      };
-                      setContent(newContent);
-                      updateBlock(block.id, newContent);
-                    }}
-                    min="150"
-                    max="600"
-                  />
-                </label>
-              </div>
-            </div>
+            <DrawingCanvas 
+              content={safeDrawingContent}
+              onUpdate={(newContent) => {
+                setContent(newContent);
+                updateBlock(block.id, newContent);
+              }}
+              isEditing={true}
+            />
             <button 
               className="add-block-below"
               onClick={() => addBlock('paragraph', index)}
@@ -2225,71 +2381,24 @@ const Block = ({
             <button onClick={onFinishEditing}>Done</button>
           </div>
         ) : editMode ? (
-          <div className="drawing-controls">
-            <canvas
-              width={safeDrawingContent.width || 400}
-              height={safeDrawingContent.height || 300}
-              style={{ border: '1px solid #ccc', cursor: 'crosshair' }}
-              ref={(canvas) => {
-                if (canvas && safeDrawingContent.strokes) {
-                  const ctx = canvas.getContext('2d');
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
-                  safeDrawingContent.strokes.forEach(stroke => {
-                    if (stroke.points && stroke.points.length > 1) {
-                      ctx.strokeStyle = stroke.color || '#000000';
-                      ctx.lineWidth = 2;
-                      ctx.beginPath();
-                      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-                      stroke.points.forEach(point => {
-                        ctx.lineTo(point.x, point.y);
-                      });
-                      ctx.stroke();
-                    }
-                  });
-                }
-              }}
-            />
-            <div className="drawing-tools">
-              <button onClick={() => {
-                const newContent = {
-                  ...(content || {}),
-                  strokes: []
-                };
-                setContent(newContent);
-                updateBlock(block.id, newContent);
-              }}>
-                Clear
-              </button>
-            </div>
-          </div>
+          <DrawingCanvas 
+            content={safeDrawingContent}
+            onUpdate={(newContent) => {
+              setContent(newContent);
+              updateBlock(block.id, newContent);
+            }}
+            isEditing={true}
+          />
         ) : (
           <div 
             className={`drawing-display ${isSelected ? 'selected' : ''}`}
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
-            <canvas
-              width={safeDrawingContent.width || 400}
-              height={safeDrawingContent.height || 300}
-              style={{ border: '1px solid #ccc' }}
-              ref={(canvas) => {
-                if (canvas && safeDrawingContent.strokes) {
-                  const ctx = canvas.getContext('2d');
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
-                  safeDrawingContent.strokes.forEach(stroke => {
-                    if (stroke.points && stroke.points.length > 1) {
-                      ctx.strokeStyle = stroke.color || '#000000';
-                      ctx.lineWidth = 2;
-                      ctx.beginPath();
-                      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-                      stroke.points.forEach(point => {
-                        ctx.lineTo(point.x, point.y);
-                      });
-                      ctx.stroke();
-                    }
-                  });
-                }
-              }}
+            <DrawingCanvas 
+              content={safeDrawingContent}
+              onUpdate={() => {}}
+              isEditing={false}
             />
           </div>
         );
