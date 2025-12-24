@@ -1,5 +1,100 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Pencil, Image, Video, Download, Upload, Trash2, Move, Bold, Italic, Type, Palette } from 'lucide-react';
+
+// LaTeX Renderer Component
+const LaTeXRenderer = ({ latex }) => {
+  // Enhanced LaTeX to HTML converter
+  const renderLaTeX = (latex) => {
+    if (!latex) return '';
+    
+    let html = latex;
+    
+    // Replace common LaTeX commands with HTML/Unicode equivalents
+    const replacements = [
+      // Fractions - improved rendering
+      [/\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, 
+       '<span class="fraction"><span class="fraction-line"><span class="numerator">$1</span><span class="denominator">$2</span></span></span>'],
+      
+      // Superscripts and subscripts - improved handling
+      [/\^(\w+|\{[^}]+\})/g, (match, p1) => `<sup>${p1.replace(/[{}]/g, '')}</sup>`],
+      [/_(\w+|\{[^}]+\})/g, (match, p1) => `<sub>${p1.replace(/[{}]/g, '')}</sub>`],
+      
+      // Square roots - better rendering
+      [/\\sqrt\{([^}]+)\}/g, '<span class="sqrt">√<span class="sqrt-content">$1</span></span>'],
+      [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<span class="nth-root"><sup class="root-index">$1</sup>√<span class="sqrt-content">$2</span></span>'],
+      
+      // Powers and squares - special handling
+      [/\^2(?!\d)/g, '²'], [/\^3(?!\d)/g, '³'], [/\^4(?!\d)/g, '⁴'], [/\^5(?!\d)/g, '⁵'],
+      [/\^6(?!\d)/g, '⁶'], [/\^7(?!\d)/g, '⁷'], [/\^8(?!\d)/g, '⁸'], [/\^9(?!\d)/g, '⁹'],
+      [/\^0(?!\d)/g, '⁰'], [/\^1(?!\d)/g, '¹'],
+      
+      // Subscripts
+      [/_0(?!\d)/g, '₀'], [/_1(?!\d)/g, '₁'], [/_2(?!\d)/g, '₂'], [/_3(?!\d)/g, '₃'],
+      [/_4(?!\d)/g, '₄'], [/_5(?!\d)/g, '₅'], [/_6(?!\d)/g, '₆'], [/_7(?!\d)/g, '₇'],
+      [/_8(?!\d)/g, '₈'], [/_9(?!\d)/g, '₉'],
+      
+      // Greek letters
+      [/\\alpha/g, 'α'], [/\\beta/g, 'β'], [/\\gamma/g, 'γ'], [/\\delta/g, 'δ'],
+      [/\\epsilon/g, 'ε'], [/\\zeta/g, 'ζ'], [/\\eta/g, 'η'], [/\\theta/g, 'θ'],
+      [/\\iota/g, 'ι'], [/\\kappa/g, 'κ'], [/\\lambda/g, 'λ'], [/\\mu/g, 'μ'],
+      [/\\nu/g, 'ν'], [/\\xi/g, 'ξ'], [/\\pi/g, 'π'], [/\\rho/g, 'ρ'],
+      [/\\sigma/g, 'σ'], [/\\tau/g, 'τ'], [/\\upsilon/g, 'υ'], [/\\phi/g, 'φ'],
+      [/\\chi/g, 'χ'], [/\\psi/g, 'ψ'], [/\\omega/g, 'ω'],
+      
+      // Capital Greek letters
+      [/\\Alpha/g, 'Α'], [/\\Beta/g, 'Β'], [/\\Gamma/g, 'Γ'], [/\\Delta/g, 'Δ'],
+      [/\\Epsilon/g, 'Ε'], [/\\Zeta/g, 'Ζ'], [/\\Eta/g, 'Η'], [/\\Theta/g, 'Θ'],
+      [/\\Iota/g, 'Ι'], [/\\Kappa/g, 'Κ'], [/\\Lambda/g, 'Λ'], [/\\Mu/g, 'Μ'],
+      [/\\Nu/g, 'Ν'], [/\\Xi/g, 'Ξ'], [/\\Pi/g, 'Π'], [/\\Rho/g, 'Ρ'],
+      [/\\Sigma/g, 'Σ'], [/\\Tau/g, 'Τ'], [/\\Upsilon/g, 'Υ'], [/\\Phi/g, 'Φ'],
+      [/\\Chi/g, 'Χ'], [/\\Psi/g, 'Ψ'], [/\\Omega/g, 'Ω'],
+      
+      // Mathematical symbols
+      [/\\infty/g, '∞'], [/\\partial/g, '∂'], [/\\nabla/g, '∇'],
+      [/\\pm/g, '±'], [/\\mp/g, '∓'], [/\\times/g, '×'], [/\\div/g, '÷'],
+      [/\\neq/g, '≠'], [/\\leq/g, '≤'], [/\\geq/g, '≥'], [/\\approx/g, '≈'],
+      [/\\equiv/g, '≡'], [/\\propto/g, '∝'], [/\\in/g, '∈'], [/\\notin/g, '∉'],
+      [/\\subset/g, '⊂'], [/\\supset/g, '⊃'], [/\\cap/g, '∩'], [/\\cup/g, '∪'],
+      [/\\int/g, '∫'], [/\\sum/g, '∑'], [/\\prod/g, '∏'],
+      
+      // Limits and integrals - improved
+      [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∑<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+      [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∫<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+      [/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∏<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+      [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub class="op-sub">$1</sub></span>'],
+      
+      // Simple sums and integrals
+      [/\\sum/g, '∑'], [/\\int/g, '∫'], [/\\prod/g, '∏'],
+      
+      // Parentheses
+      [/\\left\(/g, '('], [/\\right\)/g, ')'],
+      [/\\left\[/g, '['], [/\\right\]/g, ']'],
+      [/\\left\{/g, '{'], [/\\right\}/g, '}'],
+      
+      // Text formatting
+      [/\\text\{([^}]+)\}/g, '<span class="math-text">$1</span>'],
+      [/\\mathbf\{([^}]+)\}/g, '<strong>$1</strong>'],
+      [/\\mathit\{([^}]+)\}/g, '<em>$1</em>'],
+      
+      // Clean up extra spaces and backslashes
+      [/\\\\/g, ''], // Remove double backslashes
+      [/\s+/g, ' '], // Normalize spaces
+    ];
+    
+    replacements.forEach(([pattern, replacement]) => {
+      html = html.replace(pattern, replacement);
+    });
+    
+    return html;
+  };
+  
+  return (
+    <div 
+      className="latex-rendered" 
+      dangerouslySetInnerHTML={{ __html: renderLaTeX(latex) }}
+    />
+  );
+};
 
 export default function MarkdownEditor() {
   const [markdown, setMarkdown] = useState('');
@@ -11,8 +106,85 @@ export default function MarkdownEditor() {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
+  const [saveStatus, setSaveStatus] = useState('');
   const textareaRef = useRef(null);
   const canvasRef = useRef(null);
+
+  // Load content from localStorage on component mount
+  useEffect(() => {
+    const savedMarkdown = localStorage.getItem('markdownEditor_markdown');
+    const savedElements = localStorage.getItem('markdownEditor_elements');
+    
+    if (savedMarkdown) {
+      setMarkdown(savedMarkdown);
+    }
+    
+    if (savedElements) {
+      try {
+        setElements(JSON.parse(savedElements));
+      } catch (error) {
+        console.error('Error parsing saved elements:', error);
+      }
+    }
+    
+    setSaveStatus('Loaded from storage');
+    setTimeout(() => setSaveStatus(''), 2000);
+  }, []);
+
+  // Save content to localStorage whenever markdown or elements change
+  useEffect(() => {
+    if (markdown !== '') {
+      localStorage.setItem('markdownEditor_markdown', markdown);
+      setSaveStatus('Saved');
+      setTimeout(() => setSaveStatus(''), 1000);
+    }
+  }, [markdown]);
+
+  useEffect(() => {
+    if (elements.length > 0) {
+      localStorage.setItem('markdownEditor_elements', JSON.stringify(elements));
+      setSaveStatus('Saved');
+      setTimeout(() => setSaveStatus(''), 1000);
+    }
+  }, [elements]);
+
+  // Clear all content and localStorage
+  const clearAll = () => {
+    if (window.confirm('Are you sure you want to clear all content? This action cannot be undone.')) {
+      setMarkdown('');
+      setElements([]);
+      localStorage.removeItem('markdownEditor_markdown');
+      localStorage.removeItem('markdownEditor_elements');
+      setSaveStatus('Cleared');
+      setTimeout(() => setSaveStatus(''), 2000);
+    }
+  };
+
+  // Helper function to convert YouTube URL to embed URL
+  const convertToEmbedUrl = (url) => {
+    if (!url) return url;
+    
+    // YouTube URL patterns
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const match = url.match(youtubeRegex);
+    
+    if (match) {
+      const videoId = match[1];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    
+    // Vimeo URL patterns
+    const vimeoRegex = /(?:vimeo\.com\/)([0-9]+)/;
+    const vimeoMatch = url.match(vimeoRegex);
+    
+    if (vimeoMatch) {
+      const videoId = vimeoMatch[1];
+      return `https://player.vimeo.com/video/${videoId}`;
+    }
+    
+    // If it's already an embed URL or other format, return as is
+    return url;
+  };
 
   const insertMarkdown = (before, after = '') => {
     const textarea = textareaRef.current;
@@ -43,8 +215,105 @@ export default function MarkdownEditor() {
     }
   };
 
+  const insertEquation = () => {
+    const equation = prompt('Enter LaTeX equation (e.g., E = mc^2, \\frac{a}{b}, \\sum_{i=1}^n x_i):');
+    if (equation) {
+      insertMarkdown(`[eq]${equation}[/eq]`, '');
+    }
+  };
+
   const parseMarkdown = (text) => {
     let html = text;
+    
+    // Helper function for LaTeX rendering (same as LaTeXRenderer component)
+    const renderLaTeX = (latex) => {
+      if (!latex) return '';
+      
+      let latexHtml = latex;
+      
+      // Replace common LaTeX commands with HTML/Unicode equivalents
+      const replacements = [
+        // Fractions - improved rendering
+        [/\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, 
+         '<span class="fraction"><span class="fraction-line"><span class="numerator">$1</span><span class="denominator">$2</span></span></span>'],
+        
+        // Superscripts and subscripts - improved handling
+        [/\^(\w+|\{[^}]+\})/g, (match, p1) => `<sup>${p1.replace(/[{}]/g, '')}</sup>`],
+        [/_(\w+|\{[^}]+\})/g, (match, p1) => `<sub>${p1.replace(/[{}]/g, '')}</sub>`],
+        
+        // Square roots - better rendering
+        [/\\sqrt\{([^}]+)\}/g, '<span class="sqrt">√<span class="sqrt-content">$1</span></span>'],
+        [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<span class="nth-root"><sup class="root-index">$1</sup>√<span class="sqrt-content">$2</span></span>'],
+        
+        // Powers and squares - special handling
+        [/\^2(?!\d)/g, '²'], [/\^3(?!\d)/g, '³'], [/\^4(?!\d)/g, '⁴'], [/\^5(?!\d)/g, '⁵'],
+        [/\^6(?!\d)/g, '⁶'], [/\^7(?!\d)/g, '⁷'], [/\^8(?!\d)/g, '⁸'], [/\^9(?!\d)/g, '⁹'],
+        [/\^0(?!\d)/g, '⁰'], [/\^1(?!\d)/g, '¹'],
+        
+        // Subscripts
+        [/_0(?!\d)/g, '₀'], [/_1(?!\d)/g, '₁'], [/_2(?!\d)/g, '₂'], [/_3(?!\d)/g, '₃'],
+        [/_4(?!\d)/g, '₄'], [/_5(?!\d)/g, '₅'], [/_6(?!\d)/g, '₆'], [/_7(?!\d)/g, '₇'],
+        [/_8(?!\d)/g, '₈'], [/_9(?!\d)/g, '₉'],
+        
+        // Greek letters
+        [/\\alpha/g, 'α'], [/\\beta/g, 'β'], [/\\gamma/g, 'γ'], [/\\delta/g, 'δ'],
+        [/\\epsilon/g, 'ε'], [/\\zeta/g, 'ζ'], [/\\eta/g, 'η'], [/\\theta/g, 'θ'],
+        [/\\iota/g, 'ι'], [/\\kappa/g, 'κ'], [/\\lambda/g, 'λ'], [/\\mu/g, 'μ'],
+        [/\\nu/g, 'ν'], [/\\xi/g, 'ξ'], [/\\pi/g, 'π'], [/\\rho/g, 'ρ'],
+        [/\\sigma/g, 'σ'], [/\\tau/g, 'τ'], [/\\upsilon/g, 'υ'], [/\\phi/g, 'φ'],
+        [/\\chi/g, 'χ'], [/\\psi/g, 'ψ'], [/\\omega/g, 'ω'],
+        
+        // Capital Greek letters
+        [/\\Alpha/g, 'Α'], [/\\Beta/g, 'Β'], [/\\Gamma/g, 'Γ'], [/\\Delta/g, 'Δ'],
+        [/\\Epsilon/g, 'Ε'], [/\\Zeta/g, 'Ζ'], [/\\Eta/g, 'Η'], [/\\Theta/g, 'Θ'],
+        [/\\Iota/g, 'Ι'], [/\\Kappa/g, 'Κ'], [/\\Lambda/g, 'Λ'], [/\\Mu/g, 'Μ'],
+        [/\\Nu/g, 'Ν'], [/\\Xi/g, 'Ξ'], [/\\Pi/g, 'Π'], [/\\Rho/g, 'Ρ'],
+        [/\\Sigma/g, 'Σ'], [/\\Tau/g, 'Τ'], [/\\Upsilon/g, 'Υ'], [/\\Phi/g, 'Φ'],
+        [/\\Chi/g, 'Χ'], [/\\Psi/g, 'Ψ'], [/\\Omega/g, 'Ω'],
+        
+        // Mathematical symbols
+        [/\\infty/g, '∞'], [/\\partial/g, '∂'], [/\\nabla/g, '∇'],
+        [/\\pm/g, '±'], [/\\mp/g, '∓'], [/\\times/g, '×'], [/\\div/g, '÷'],
+        [/\\neq/g, '≠'], [/\\leq/g, '≤'], [/\\geq/g, '≥'], [/\\approx/g, '≈'],
+        [/\\equiv/g, '≡'], [/\\propto/g, '∝'], [/\\in/g, '∈'], [/\\notin/g, '∉'],
+        [/\\subset/g, '⊂'], [/\\supset/g, '⊃'], [/\\cap/g, '∩'], [/\\cup/g, '∪'],
+        [/\\int/g, '∫'], [/\\sum/g, '∑'], [/\\prod/g, '∏'],
+        
+        // Limits and integrals - improved
+        [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∑<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+        [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∫<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+        [/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∏<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
+        [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub class="op-sub">$1</sub></span>'],
+        
+        // Simple sums and integrals
+        [/\\sum/g, '∑'], [/\\int/g, '∫'], [/\\prod/g, '∏'],
+        
+        // Parentheses
+        [/\\left\(/g, '('], [/\\right\)/g, ')'],
+        [/\\left\[/g, '['], [/\\right\]/g, ']'],
+        [/\\left\{/g, '{'], [/\\right\}/g, '}'],
+        
+        // Text formatting
+        [/\\text\{([^}]+)\}/g, '<span class="math-text">$1</span>'],
+        [/\\mathbf\{([^}]+)\}/g, '<strong>$1</strong>'],
+        [/\\mathit\{([^}]+)\}/g, '<em>$1</em>'],
+        
+        // Clean up extra spaces and backslashes
+        [/\\\\/g, ''], // Remove double backslashes
+        [/\s+/g, ' '], // Normalize spaces
+      ];
+      
+      replacements.forEach(([pattern, replacement]) => {
+        latexHtml = latexHtml.replace(pattern, replacement);
+      });
+      
+      return latexHtml;
+    };
+    
+    // Parse equation tags: [eq]LaTeX code[/eq]
+    html = html.replace(/\[eq\](.*?)\[\/eq\]/gs, (match, latexCode) => {
+      return `<div class="equation-display">${renderLaTeX(latexCode)}</div>`;
+    });
     
     // Parse line spacing tags: [lsp=2]text[/lsp]
     html = html.replace(/\[lsp=([0-9.]+)\](.*?)\[\/lsp\]/gs, '<div style="line-height: $1">$2</div>');
@@ -71,7 +340,7 @@ export default function MarkdownEditor() {
     
     // Convert line breaks to <br>
     html = html.split('\n').map(line => {
-      // Don't add <br> if line is already a heading or div
+      // Don't add <br> if line is already a heading, div, or equation
       if (line.startsWith('<h') || line.startsWith('<div')) return line;
       return line + '<br>';
     }).join('');
@@ -101,12 +370,14 @@ export default function MarkdownEditor() {
   };
 
   const addVideoElement = () => {
-    const url = prompt('Enter video URL (YouTube embed link):');
+    const url = prompt('Enter video URL (YouTube, Vimeo, or embed link):');
     if (url) {
+      const embedUrl = convertToEmbedUrl(url);
       const newElement = {
         id: Date.now(),
         type: 'video',
-        src: url,
+        src: embedUrl,
+        originalUrl: url, // Store original URL for reference
         x: 100,
         y: 100,
         width: 400,
@@ -199,6 +470,147 @@ export default function MarkdownEditor() {
         h1 { font-size: 32px; font-weight: bold; margin: 16px 0; }
         h2 { font-size: 24px; font-weight: bold; margin: 14px 0; }
         h3 { font-size: 20px; font-weight: bold; margin: 12px 0; }
+        
+        /* LaTeX Rendering Styles */
+        .latex-rendered, .equation-display {
+          display: inline-block;
+          font-family: 'Times New Roman', 'Computer Modern', serif;
+          font-size: 1.3rem;
+          line-height: 1.4;
+          margin: 0.5em 0;
+          padding: 0.3em;
+          text-align: center;
+        }
+        
+        .equation-display {
+          display: block;
+          margin: 1em 0;
+          padding: 1em;
+          background: #f8f9fa;
+          border-radius: 4px;
+          border-left: 4px solid #007bff;
+        }
+        
+        /* Fraction styling */
+        .fraction {
+          display: inline-block;
+          vertical-align: middle;
+          margin: 0 0.2em;
+        }
+        
+        .fraction-line {
+          display: inline-block;
+          vertical-align: middle;
+        }
+        
+        .fraction .numerator {
+          display: block;
+          border-bottom: 2px solid currentColor;
+          padding: 0.1em 0.3em;
+          text-align: center;
+          font-size: 0.9em;
+        }
+        
+        .fraction .denominator {
+          display: block;
+          padding: 0.1em 0.3em;
+          text-align: center;
+          font-size: 0.9em;
+        }
+        
+        /* Square Root styling */
+        .sqrt {
+          display: inline-block;
+          position: relative;
+          margin: 0 0.2em;
+        }
+        
+        .sqrt-content {
+          border-top: 2px solid currentColor;
+          padding: 0.1em 0.3em 0 0.1em;
+          margin-left: 0.3em;
+        }
+        
+        .nth-root {
+          display: inline-block;
+          position: relative;
+          margin: 0 0.2em;
+        }
+        
+        .root-index {
+          position: absolute;
+          left: -0.3em;
+          top: -0.5em;
+          font-size: 0.6em;
+        }
+        
+        /* Big operators (sum, integral, product) */
+        .big-op {
+          display: inline-block;
+          position: relative;
+          font-size: 1.8em;
+          margin: 0 0.3em;
+          vertical-align: middle;
+        }
+        
+        .op-sub {
+          position: absolute;
+          bottom: -0.6em;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 0.6em;
+          white-space: nowrap;
+        }
+        
+        .op-sup {
+          position: absolute;
+          top: -0.6em;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 0.6em;
+          white-space: nowrap;
+        }
+        
+        .limit {
+          display: inline-block;
+          position: relative;
+          margin: 0 0.3em;
+        }
+        
+        .limit .op-sub {
+          position: absolute;
+          bottom: -0.8em;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 0.7em;
+          white-space: nowrap;
+        }
+        
+        .math-text {
+          font-family: Arial, sans-serif;
+          font-style: normal;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+          .latex-rendered, .equation-display {
+            font-size: 1.1rem;
+            padding: 1rem;
+          }
+          
+          .fraction {
+            margin: 0 0.2em;
+          }
+          
+          .big-op {
+            font-size: 1.4em;
+            margin: 0 0.3em;
+          }
+          
+          .sqrt {
+            font-size: 1.1em;
+          }
+        }
     </style>
 </head>
 <body>
@@ -286,6 +698,9 @@ export default function MarkdownEditor() {
             
             // Convert space divs
             extractedText = extractedText.replace(/<div style="height:\s*(\d+)px"><\/div>/gi, '[space=$1][/space]');
+            
+            // Convert equation displays back to [eq] tags
+            extractedText = extractedText.replace(/<div class="equation-display">(.*?)<\/div>/gi, '[eq]$1[/eq]');
             
             // Remove remaining HTML tags
             extractedText = extractedText.replace(/<[^>]+>/g, '');
@@ -486,6 +901,26 @@ export default function MarkdownEditor() {
         >
           <Download size={20} /> Download
         </button>
+        <button
+          onClick={clearAll}
+          style={{ ...buttonStyle, backgroundColor: '#ef4444', color: 'white', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
+        >
+          <Trash2 size={20} /> Clear All
+        </button>
+        
+        {saveStatus && saveStatus !== 'Saved' && (
+          <div style={{ 
+            padding: '8px 12px', 
+            backgroundColor: '#22c55e', 
+            color: 'white', 
+            borderRadius: '4px', 
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            {saveStatus}
+          </div>
+        )}
       </div>
 
       {/* Split View */}
@@ -526,8 +961,15 @@ export default function MarkdownEditor() {
             >
               <Type size={16} />
             </button>
+            <button
+              onClick={insertEquation}
+              style={{ ...buttonStyle, padding: '6px 10px', fontSize: '12px' }}
+              title="Insert Equation"
+            >
+              ∑
+            </button>
             <div style={{ fontSize: '11px', color: '#6b7280', padding: '6px 10px', display: 'flex', alignItems: 'center' }}>
-              Syntax: # Heading, **bold**, *italic*, [c=red]text[/c], [f=20]text[/f], [lsp=2]text[/lsp], [space=20][/space]
+              Syntax: # Heading, **bold**, *italic*, [c=red]text[/c], [f=20]text[/f], [lsp=2]text[/lsp], [space=20][/space], [eq]LaTeX[/eq]
             </div>
           </div>
 
@@ -559,7 +1001,12 @@ Examples:
 [c=#0000ff]blue text[/c]
 [f=24]large text[/f]
 [lsp=2]text with line spacing 2[/lsp]
-[space=50][/space]"
+[space=50][/space]
+
+Equations:
+[eq]E = mc^2[/eq]
+[eq]\\frac{a}{b} + \\sqrt{x^2 + y^2}[/eq]
+[eq]\\sum_{i=1}^n x_i = \\int_0^\\infty e^{-x} dx[/eq]"
           />
         </div>
 
