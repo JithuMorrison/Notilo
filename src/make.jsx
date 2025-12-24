@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Pencil, Image, Video, Download, Upload, Trash2, Move, Bold, Italic, Type, Palette } from 'lucide-react';
+import { Pencil, Image, Video, Download, Upload, Trash2, Move, Bold, Italic, Type, Palette, Undo } from 'lucide-react';
 
 // LaTeX Renderer Component
 const LaTeXRenderer = ({ latex }) => {
@@ -107,13 +107,14 @@ export default function MarkdownEditor() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
   const [saveStatus, setSaveStatus] = useState('');
+  const [history, setHistory] = useState([]);
   const textareaRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Load content from localStorage on component mount
+  // Load content from memory on component mount
   useEffect(() => {
-    const savedMarkdown = localStorage.getItem('markdownEditor_markdown');
-    const savedElements = localStorage.getItem('markdownEditor_elements');
+    const savedMarkdown = '';
+    const savedElements = [];
     
     if (savedMarkdown) {
       setMarkdown(savedMarkdown);
@@ -121,42 +122,32 @@ export default function MarkdownEditor() {
     
     if (savedElements) {
       try {
-        setElements(JSON.parse(savedElements));
+        setElements(savedElements);
       } catch (error) {
         console.error('Error parsing saved elements:', error);
       }
     }
-    
-    setSaveStatus('Loaded from storage');
-    setTimeout(() => setSaveStatus(''), 2000);
   }, []);
 
-  // Save content to localStorage whenever markdown or elements change
-  useEffect(() => {
-    if (markdown !== '') {
-      localStorage.setItem('markdownEditor_markdown', markdown);
-      setSaveStatus('Saved');
-      setTimeout(() => setSaveStatus(''), 1000);
-    }
-  }, [markdown]);
-
-  useEffect(() => {
-    if (elements.length > 0) {
-      localStorage.setItem('markdownEditor_elements', JSON.stringify(elements));
-      setSaveStatus('Saved');
-      setTimeout(() => setSaveStatus(''), 1000);
-    }
-  }, [elements]);
-
-  // Clear all content and localStorage
+  // Clear all content
   const clearAll = () => {
     if (window.confirm('Are you sure you want to clear all content? This action cannot be undone.')) {
       setMarkdown('');
       setElements([]);
-      localStorage.removeItem('markdownEditor_markdown');
-      localStorage.removeItem('markdownEditor_elements');
+      setHistory([]);
       setSaveStatus('Cleared');
       setTimeout(() => setSaveStatus(''), 2000);
+    }
+  };
+
+  // Undo function
+  const undo = () => {
+    if (history.length > 0) {
+      const lastState = history[history.length - 1];
+      setElements(lastState.elements);
+      setHistory(history.slice(0, -1));
+      setSaveStatus('Undone');
+      setTimeout(() => setSaveStatus(''), 1000);
     }
   };
 
@@ -356,6 +347,9 @@ export default function MarkdownEditor() {
   const addImageElement = () => {
     const url = prompt('Enter image URL:');
     if (url) {
+      // Save current state to history before adding
+      setHistory([...history, { elements: [...elements] }]);
+      
       const newElement = {
         id: Date.now(),
         type: 'image',
@@ -372,12 +366,15 @@ export default function MarkdownEditor() {
   const addVideoElement = () => {
     const url = prompt('Enter video URL (YouTube, Vimeo, or embed link):');
     if (url) {
+      // Save current state to history before adding
+      setHistory([...history, { elements: [...elements] }]);
+      
       const embedUrl = convertToEmbedUrl(url);
       const newElement = {
         id: Date.now(),
         type: 'video',
         src: embedUrl,
-        originalUrl: url, // Store original URL for reference
+        originalUrl: url,
         x: 100,
         y: 100,
         width: 400,
@@ -389,6 +386,7 @@ export default function MarkdownEditor() {
 
   const handleMouseDown = (e, element) => {
     if (selectedTool === 'move') {
+      e.stopPropagation();
       setSelectedElement(element.id);
       setIsDragging(true);
       const rect = canvasRef.current.getBoundingClientRect();
@@ -418,6 +416,9 @@ export default function MarkdownEditor() {
 
   const handleMouseUp = () => {
     if (selectedTool === 'pencil' && currentPath.length > 0) {
+      // Save current state to history before adding drawing
+      setHistory([...history, { elements: [...elements] }]);
+      
       const newElement = {
         id: Date.now(),
         type: 'drawing',
@@ -441,6 +442,9 @@ export default function MarkdownEditor() {
 
   const deleteElement = () => {
     if (selectedElement) {
+      // Save current state to history before deleting
+      setHistory([...history, { elements: [...elements] }]);
+      
       setElements(elements.filter(el => el.id !== selectedElement));
       setSelectedElement(null);
     }
@@ -450,6 +454,14 @@ export default function MarkdownEditor() {
     setElements(elements.map(el => 
       el.id === id ? { ...el, [dimension]: parseInt(value) } : el
     ));
+  };
+
+  const toggleTool = (tool) => {
+    if (selectedTool === tool) {
+      setSelectedTool('text');
+    } else {
+      setSelectedTool(tool);
+    }
   };
 
   const generateHTML = () => {
@@ -815,14 +827,14 @@ export default function MarkdownEditor() {
       {/* Toolbar */}
       <div style={toolbarStyle}>
         <button
-          onClick={() => setSelectedTool('pencil')}
+          onClick={() => toggleTool('pencil')}
           style={selectedTool === 'pencil' ? activeButtonStyle : buttonStyle}
           title="Pencil Tool"
         >
           <Pencil size={20} />
         </button>
         <button
-          onClick={() => setSelectedTool('move')}
+          onClick={() => toggleTool('move')}
           style={selectedTool === 'move' ? activeButtonStyle : buttonStyle}
           title="Move Tool"
         >
@@ -857,6 +869,20 @@ export default function MarkdownEditor() {
         </button>
         
         <div style={separatorStyle}></div>
+        
+        <button
+          onClick={undo}
+          disabled={history.length === 0}
+          style={{
+            ...buttonStyle,
+            backgroundColor: history.length === 0 ? '#d1d5db' : '#8b5cf6',
+            color: 'white',
+            cursor: history.length === 0 ? 'not-allowed' : 'pointer'
+          }}
+          title="Undo"
+        >
+          <Undo size={20} />
+        </button>
         
         <button
           onClick={deleteElement}
@@ -908,7 +934,7 @@ export default function MarkdownEditor() {
           <Trash2 size={20} /> Clear All
         </button>
         
-        {saveStatus && saveStatus !== 'Saved' && (
+        {saveStatus && (
           <div style={{ 
             padding: '8px 12px', 
             backgroundColor: '#22c55e', 
@@ -1070,7 +1096,7 @@ Equations:
                     src={el.src}
                     style={{
                       position: 'absolute',
-                      cursor: 'pointer',
+                      cursor: selectedTool === 'move' ? 'move' : 'pointer',
                       left: el.x,
                       top: el.y,
                       width: el.width,
@@ -1085,23 +1111,31 @@ Equations:
                 );
               } else if (el.type === 'video') {
                 return (
-                  <iframe
+                  <div
                     key={el.id}
-                    src={el.src}
                     style={{
                       position: 'absolute',
                       left: el.x,
                       top: el.y,
                       width: el.width,
                       height: el.height,
-                      border: 'none',
                       outline: selectedElement === el.id ? '2px solid #3b82f6' : 'none',
                       zIndex: 5
                     }}
                     onMouseDown={(e) => handleMouseDown(e, el)}
                     onClick={() => setSelectedElement(el.id)}
-                    allowFullScreen
-                  />
+                  >
+                    <iframe
+                      src={el.src}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        pointerEvents: selectedTool === 'move' ? 'none' : 'auto'
+                      }}
+                      allowFullScreen
+                    />
+                  </div>
                 );
               }
               return null;
