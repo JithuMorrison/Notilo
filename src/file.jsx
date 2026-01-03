@@ -2123,6 +2123,8 @@ const Block = ({
               <option value="list">List</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
+              <option value="equation">Equation</option>
+              <option value="drawing">Drawing</option>
             </select><br/>
             <input
               type="text"
@@ -2261,12 +2263,9 @@ const Block = ({
                 {/* Sublists */}
                 {item.sublists && item.sublists.length > 0 && (
                   <div className="sublists">
-                    {item.sublists.map((subitem, j) => (
-                      <div key={j} className="sublist-item">
-                        <span>• {subitem.text || ''}</span>
-                        <button onClick={() => removeSublist(i, j)}>×</button>
-                      </div>
-                    ))}
+                    {item.sublists.map((subitem, j) => 
+                      renderEditableSublist(subitem, i, [j], 0)
+                    )}
                   </div>
                 )}
                 
@@ -2406,6 +2405,8 @@ const Block = ({
               <option value="list">List</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
+              <option value="equation">Equation</option>
+              <option value="drawing">Drawing</option>
             </select><br/>
             <div className="image-block">
               {safeImageContent.images.map((img, i) => (
@@ -2501,6 +2502,8 @@ const Block = ({
               <option value="list">List</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
+              <option value="equation">Equation</option>
+              <option value="drawing">Drawing</option>
             </select><br/>
             <div className="video-block">
               {safeVideoContent.videos.map((vid, i) => (
