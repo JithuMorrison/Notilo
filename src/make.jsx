@@ -1,100 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Pencil, Image, Video, Download, Upload, Trash2, Move, Bold, Italic, Type, Palette, Undo } from 'lucide-react';
-
-// LaTeX Renderer Component
-const LaTeXRenderer = ({ latex }) => {
-  // Enhanced LaTeX to HTML converter
-  const renderLaTeX = (latex) => {
-    if (!latex) return '';
-    
-    let html = latex;
-    
-    // Replace common LaTeX commands with HTML/Unicode equivalents
-    const replacements = [
-      // Fractions - improved rendering
-      [/\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, 
-       '<span class="fraction"><span class="fraction-line"><span class="numerator">$1</span><span class="denominator">$2</span></span></span>'],
-      
-      // Superscripts and subscripts - improved handling
-      [/\^(\w+|\{[^}]+\})/g, (match, p1) => `<sup>${p1.replace(/[{}]/g, '')}</sup>`],
-      [/_(\w+|\{[^}]+\})/g, (match, p1) => `<sub>${p1.replace(/[{}]/g, '')}</sub>`],
-      
-      // Square roots - better rendering
-      [/\\sqrt\{([^}]+)\}/g, '<span class="sqrt">√<span class="sqrt-content">$1</span></span>'],
-      [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<span class="nth-root"><sup class="root-index">$1</sup>√<span class="sqrt-content">$2</span></span>'],
-      
-      // Powers and squares - special handling
-      [/\^2(?!\d)/g, '²'], [/\^3(?!\d)/g, '³'], [/\^4(?!\d)/g, '⁴'], [/\^5(?!\d)/g, '⁵'],
-      [/\^6(?!\d)/g, '⁶'], [/\^7(?!\d)/g, '⁷'], [/\^8(?!\d)/g, '⁸'], [/\^9(?!\d)/g, '⁹'],
-      [/\^0(?!\d)/g, '⁰'], [/\^1(?!\d)/g, '¹'],
-      
-      // Subscripts
-      [/_0(?!\d)/g, '₀'], [/_1(?!\d)/g, '₁'], [/_2(?!\d)/g, '₂'], [/_3(?!\d)/g, '₃'],
-      [/_4(?!\d)/g, '₄'], [/_5(?!\d)/g, '₅'], [/_6(?!\d)/g, '₆'], [/_7(?!\d)/g, '₇'],
-      [/_8(?!\d)/g, '₈'], [/_9(?!\d)/g, '₉'],
-      
-      // Greek letters
-      [/\\alpha/g, 'α'], [/\\beta/g, 'β'], [/\\gamma/g, 'γ'], [/\\delta/g, 'δ'],
-      [/\\epsilon/g, 'ε'], [/\\zeta/g, 'ζ'], [/\\eta/g, 'η'], [/\\theta/g, 'θ'],
-      [/\\iota/g, 'ι'], [/\\kappa/g, 'κ'], [/\\lambda/g, 'λ'], [/\\mu/g, 'μ'],
-      [/\\nu/g, 'ν'], [/\\xi/g, 'ξ'], [/\\pi/g, 'π'], [/\\rho/g, 'ρ'],
-      [/\\sigma/g, 'σ'], [/\\tau/g, 'τ'], [/\\upsilon/g, 'υ'], [/\\phi/g, 'φ'],
-      [/\\chi/g, 'χ'], [/\\psi/g, 'ψ'], [/\\omega/g, 'ω'],
-      
-      // Capital Greek letters
-      [/\\Alpha/g, 'Α'], [/\\Beta/g, 'Β'], [/\\Gamma/g, 'Γ'], [/\\Delta/g, 'Δ'],
-      [/\\Epsilon/g, 'Ε'], [/\\Zeta/g, 'Ζ'], [/\\Eta/g, 'Η'], [/\\Theta/g, 'Θ'],
-      [/\\Iota/g, 'Ι'], [/\\Kappa/g, 'Κ'], [/\\Lambda/g, 'Λ'], [/\\Mu/g, 'Μ'],
-      [/\\Nu/g, 'Ν'], [/\\Xi/g, 'Ξ'], [/\\Pi/g, 'Π'], [/\\Rho/g, 'Ρ'],
-      [/\\Sigma/g, 'Σ'], [/\\Tau/g, 'Τ'], [/\\Upsilon/g, 'Υ'], [/\\Phi/g, 'Φ'],
-      [/\\Chi/g, 'Χ'], [/\\Psi/g, 'Ψ'], [/\\Omega/g, 'Ω'],
-      
-      // Mathematical symbols
-      [/\\infty/g, '∞'], [/\\partial/g, '∂'], [/\\nabla/g, '∇'],
-      [/\\pm/g, '±'], [/\\mp/g, '∓'], [/\\times/g, '×'], [/\\div/g, '÷'],
-      [/\\neq/g, '≠'], [/\\leq/g, '≤'], [/\\geq/g, '≥'], [/\\approx/g, '≈'],
-      [/\\equiv/g, '≡'], [/\\propto/g, '∝'], [/\\in/g, '∈'], [/\\notin/g, '∉'],
-      [/\\subset/g, '⊂'], [/\\supset/g, '⊃'], [/\\cap/g, '∩'], [/\\cup/g, '∪'],
-      [/\\int/g, '∫'], [/\\sum/g, '∑'], [/\\prod/g, '∏'],
-      
-      // Limits and integrals - improved
-      [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∑<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
-      [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∫<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
-      [/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∏<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
-      [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub class="op-sub">$1</sub></span>'],
-      
-      // Simple sums and integrals
-      [/\\sum/g, '∑'], [/\\int/g, '∫'], [/\\prod/g, '∏'],
-      
-      // Parentheses
-      [/\\left\(/g, '('], [/\\right\)/g, ')'],
-      [/\\left\[/g, '['], [/\\right\]/g, ']'],
-      [/\\left\{/g, '{'], [/\\right\}/g, '}'],
-      
-      // Text formatting
-      [/\\text\{([^}]+)\}/g, '<span class="math-text">$1</span>'],
-      [/\\mathbf\{([^}]+)\}/g, '<strong>$1</strong>'],
-      [/\\mathit\{([^}]+)\}/g, '<em>$1</em>'],
-      
-      // Clean up extra spaces and backslashes
-      [/\\\\/g, ''], // Remove double backslashes
-      [/\s+/g, ' '], // Normalize spaces
-    ];
-    
-    replacements.forEach(([pattern, replacement]) => {
-      html = html.replace(pattern, replacement);
-    });
-    
-    return html;
-  };
-  
-  return (
-    <div 
-      className="latex-rendered" 
-      dangerouslySetInnerHTML={{ __html: renderLaTeX(latex) }}
-    />
-  );
-};
+import { Pencil, Image, Video, Download, Upload, Trash2, Move, Bold, Italic, Type, Palette, Undo, Redo, Eraser } from 'lucide-react';
 
 export default function MarkdownEditor() {
   const [markdown, setMarkdown] = useState('');
@@ -108,33 +13,67 @@ export default function MarkdownEditor() {
   const [currentPath, setCurrentPath] = useState([]);
   const [saveStatus, setSaveStatus] = useState('');
   const [history, setHistory] = useState([]);
+  const [redoHistory, setRedoHistory] = useState([]);
+  const [exportFormat, setExportFormat] = useState('html');
   const textareaRef = useRef(null);
   const canvasRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
 
-  // Load content from memory on component mount
+  // Load content from localStorage on component mount
   useEffect(() => {
-    const savedMarkdown = '';
-    const savedElements = [];
-    
-    if (savedMarkdown) {
-      setMarkdown(savedMarkdown);
-    }
-    
-    if (savedElements) {
-      try {
-        setElements(savedElements);
-      } catch (error) {
-        console.error('Error parsing saved elements:', error);
+    try {
+      const savedData = JSON.parse(localStorage.getItem('markdownEditor_data') || '{}');
+      
+      if (savedData.markdown) {
+        setMarkdown(savedData.markdown);
       }
+      
+      if (savedData.elements) {
+        setElements(savedData.elements);
+      }
+      
+      if (savedData.markdown || savedData.elements) {
+        setSaveStatus('Loaded from storage');
+        setTimeout(() => setSaveStatus(''), 2000);
+      }
+    } catch (error) {
+      console.error('Error loading from storage:', error);
     }
   }, []);
 
-  // Clear all content
+  // Auto-save to localStorage periodically
+  useEffect(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      try {
+        const dataToSave = {
+          markdown,
+          elements
+        };
+        localStorage.setItem('markdownEditor_data', JSON.stringify(dataToSave));
+      } catch (error) {
+        console.error('Error saving:', error);
+      }
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [markdown, elements]);
+
+  // Clear all content and storage
   const clearAll = () => {
     if (window.confirm('Are you sure you want to clear all content? This action cannot be undone.')) {
       setMarkdown('');
       setElements([]);
       setHistory([]);
+      setRedoHistory([]);
+      localStorage.removeItem('markdownEditor_data');
       setSaveStatus('Cleared');
       setTimeout(() => setSaveStatus(''), 2000);
     }
@@ -143,19 +82,43 @@ export default function MarkdownEditor() {
   // Undo function
   const undo = () => {
     if (history.length > 0) {
+      const currentState = { elements: [...elements] };
       const lastState = history[history.length - 1];
+      
+      setRedoHistory([...redoHistory, currentState]);
       setElements(lastState.elements);
       setHistory(history.slice(0, -1));
+      
       setSaveStatus('Undone');
       setTimeout(() => setSaveStatus(''), 1000);
     }
+  };
+
+  // Redo function
+  const redo = () => {
+    if (redoHistory.length > 0) {
+      const currentState = { elements: [...elements] };
+      const nextState = redoHistory[redoHistory.length - 1];
+      
+      setHistory([...history, currentState]);
+      setElements(nextState.elements);
+      setRedoHistory(redoHistory.slice(0, -1));
+      
+      setSaveStatus('Redone');
+      setTimeout(() => setSaveStatus(''), 1000);
+    }
+  };
+
+  // Helper function to save state to history
+  const saveToHistory = () => {
+    setHistory([...history, { elements: [...elements] }]);
+    setRedoHistory([]);
   };
 
   // Helper function to convert YouTube URL to embed URL
   const convertToEmbedUrl = (url) => {
     if (!url) return url;
     
-    // YouTube URL patterns
     const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
     const match = url.match(youtubeRegex);
     
@@ -164,7 +127,6 @@ export default function MarkdownEditor() {
       return `https://www.youtube.com/embed/${videoId}`;
     }
     
-    // Vimeo URL patterns
     const vimeoRegex = /(?:vimeo\.com\/)([0-9]+)/;
     const vimeoMatch = url.match(vimeoRegex);
     
@@ -173,7 +135,6 @@ export default function MarkdownEditor() {
       return `https://player.vimeo.com/video/${videoId}`;
     }
     
-    // If it's already an embed URL or other format, return as is
     return url;
   };
 
@@ -216,82 +177,26 @@ export default function MarkdownEditor() {
   const parseMarkdown = (text) => {
     let html = text;
     
-    // Helper function for LaTeX rendering (same as LaTeXRenderer component)
     const renderLaTeX = (latex) => {
       if (!latex) return '';
       
       let latexHtml = latex;
       
-      // Replace common LaTeX commands with HTML/Unicode equivalents
       const replacements = [
-        // Fractions - improved rendering
         [/\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, 
          '<span class="fraction"><span class="fraction-line"><span class="numerator">$1</span><span class="denominator">$2</span></span></span>'],
-        
-        // Superscripts and subscripts - improved handling
         [/\^(\w+|\{[^}]+\})/g, (match, p1) => `<sup>${p1.replace(/[{}]/g, '')}</sup>`],
         [/_(\w+|\{[^}]+\})/g, (match, p1) => `<sub>${p1.replace(/[{}]/g, '')}</sub>`],
-        
-        // Square roots - better rendering
         [/\\sqrt\{([^}]+)\}/g, '<span class="sqrt">√<span class="sqrt-content">$1</span></span>'],
-        [/\\sqrt\[(\d+)\]\{([^}]+)\}/g, '<span class="nth-root"><sup class="root-index">$1</sup>√<span class="sqrt-content">$2</span></span>'],
-        
-        // Powers and squares - special handling
         [/\^2(?!\d)/g, '²'], [/\^3(?!\d)/g, '³'], [/\^4(?!\d)/g, '⁴'], [/\^5(?!\d)/g, '⁵'],
-        [/\^6(?!\d)/g, '⁶'], [/\^7(?!\d)/g, '⁷'], [/\^8(?!\d)/g, '⁸'], [/\^9(?!\d)/g, '⁹'],
-        [/\^0(?!\d)/g, '⁰'], [/\^1(?!\d)/g, '¹'],
-        
-        // Subscripts
         [/_0(?!\d)/g, '₀'], [/_1(?!\d)/g, '₁'], [/_2(?!\d)/g, '₂'], [/_3(?!\d)/g, '₃'],
-        [/_4(?!\d)/g, '₄'], [/_5(?!\d)/g, '₅'], [/_6(?!\d)/g, '₆'], [/_7(?!\d)/g, '₇'],
-        [/_8(?!\d)/g, '₈'], [/_9(?!\d)/g, '₉'],
-        
-        // Greek letters
         [/\\alpha/g, 'α'], [/\\beta/g, 'β'], [/\\gamma/g, 'γ'], [/\\delta/g, 'δ'],
-        [/\\epsilon/g, 'ε'], [/\\zeta/g, 'ζ'], [/\\eta/g, 'η'], [/\\theta/g, 'θ'],
-        [/\\iota/g, 'ι'], [/\\kappa/g, 'κ'], [/\\lambda/g, 'λ'], [/\\mu/g, 'μ'],
-        [/\\nu/g, 'ν'], [/\\xi/g, 'ξ'], [/\\pi/g, 'π'], [/\\rho/g, 'ρ'],
-        [/\\sigma/g, 'σ'], [/\\tau/g, 'τ'], [/\\upsilon/g, 'υ'], [/\\phi/g, 'φ'],
-        [/\\chi/g, 'χ'], [/\\psi/g, 'ψ'], [/\\omega/g, 'ω'],
-        
-        // Capital Greek letters
-        [/\\Alpha/g, 'Α'], [/\\Beta/g, 'Β'], [/\\Gamma/g, 'Γ'], [/\\Delta/g, 'Δ'],
-        [/\\Epsilon/g, 'Ε'], [/\\Zeta/g, 'Ζ'], [/\\Eta/g, 'Η'], [/\\Theta/g, 'Θ'],
-        [/\\Iota/g, 'Ι'], [/\\Kappa/g, 'Κ'], [/\\Lambda/g, 'Λ'], [/\\Mu/g, 'Μ'],
-        [/\\Nu/g, 'Ν'], [/\\Xi/g, 'Ξ'], [/\\Pi/g, 'Π'], [/\\Rho/g, 'Ρ'],
-        [/\\Sigma/g, 'Σ'], [/\\Tau/g, 'Τ'], [/\\Upsilon/g, 'Υ'], [/\\Phi/g, 'Φ'],
-        [/\\Chi/g, 'Χ'], [/\\Psi/g, 'Ψ'], [/\\Omega/g, 'Ω'],
-        
-        // Mathematical symbols
-        [/\\infty/g, '∞'], [/\\partial/g, '∂'], [/\\nabla/g, '∇'],
-        [/\\pm/g, '±'], [/\\mp/g, '∓'], [/\\times/g, '×'], [/\\div/g, '÷'],
-        [/\\neq/g, '≠'], [/\\leq/g, '≤'], [/\\geq/g, '≥'], [/\\approx/g, '≈'],
-        [/\\equiv/g, '≡'], [/\\propto/g, '∝'], [/\\in/g, '∈'], [/\\notin/g, '∉'],
-        [/\\subset/g, '⊂'], [/\\supset/g, '⊃'], [/\\cap/g, '∩'], [/\\cup/g, '∪'],
-        [/\\int/g, '∫'], [/\\sum/g, '∑'], [/\\prod/g, '∏'],
-        
-        // Limits and integrals - improved
+        [/\\theta/g, 'θ'], [/\\lambda/g, 'λ'], [/\\pi/g, 'π'], [/\\sigma/g, 'σ'],
+        [/\\infty/g, '∞'], [/\\pm/g, '±'], [/\\times/g, '×'], [/\\leq/g, '≤'], [/\\geq/g, '≥'],
         [/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∑<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
         [/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∫<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
-        [/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '<span class="big-op">∏<sub class="op-sub">$1</sub><sup class="op-sup">$2</sup></span>'],
-        [/\\lim_\{([^}]+)\}/g, '<span class="limit">lim<sub class="op-sub">$1</sub></span>'],
-        
-        // Simple sums and integrals
         [/\\sum/g, '∑'], [/\\int/g, '∫'], [/\\prod/g, '∏'],
-        
-        // Parentheses
-        [/\\left\(/g, '('], [/\\right\)/g, ')'],
-        [/\\left\[/g, '['], [/\\right\]/g, ']'],
-        [/\\left\{/g, '{'], [/\\right\}/g, '}'],
-        
-        // Text formatting
         [/\\text\{([^}]+)\}/g, '<span class="math-text">$1</span>'],
-        [/\\mathbf\{([^}]+)\}/g, '<strong>$1</strong>'],
-        [/\\mathit\{([^}]+)\}/g, '<em>$1</em>'],
-        
-        // Clean up extra spaces and backslashes
-        [/\\\\/g, ''], // Remove double backslashes
-        [/\s+/g, ' '], // Normalize spaces
       ];
       
       replacements.forEach(([pattern, replacement]) => {
@@ -301,42 +206,30 @@ export default function MarkdownEditor() {
       return latexHtml;
     };
     
-    // Parse equation tags: [eq]LaTeX code[/eq]
-    html = html.replace(/\[eq\](.*?)\[\/eq\]/gs, (match, latexCode) => {
-      return `<div class="equation-display">${renderLaTeX(latexCode)}</div>`;
+    // Parse line spacing first - handle multi-line content
+    html = html.replace(/\[lsp=([0-9.]+)\]([\s\S]*?)\[\/lsp\]/g, (match, spacing, content) => {
+      return `<div style="line-height: ${spacing}">${content}</div>`;
     });
     
-    // Parse line spacing tags: [lsp=2]text[/lsp]
-    html = html.replace(/\[lsp=([0-9.]+)\](.*?)\[\/lsp\]/gs, '<div style="line-height: $1">$2</div>');
+    // Parse equation tags
+    html = html.replace(/\[eq\](.*?)\[\/eq\]/gs, (match, latexCode) => {
+      return `<div class="equation-display" data-latex="${latexCode.replace(/"/g, '&quot;')}">${renderLaTeX(latexCode)}</div>`;
+    });
     
-    // Parse space tags: [space=20][/space]
     html = html.replace(/\[space=(\d+)\]\[\/space\]/g, '<div style="height: $1px"></div>');
-    
-    // Parse color tags: [c=red]text[/c] or [c=#FF0000]text[/c]
     html = html.replace(/\[c=([a-zA-Z0-9#]+)\](.*?)\[\/c\]/gs, '<span style="color: $1">$2</span>');
-    
-    // Parse font size tags: [f=20]text[/f]
     html = html.replace(/\[f=(\d+)\](.*?)\[\/f\]/gs, '<span style="font-size: $1px">$2</span>');
-    
-    // Bold: **text**
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    
-    // Italic: *text*
     html = html.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
-    
-    // Headings - must be at start of line
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
     html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
     
-    // Convert line breaks to <br>
     html = html.split('\n').map(line => {
-      // Don't add <br> if line is already a heading, div, or equation
       if (line.startsWith('<h') || line.startsWith('<div')) return line;
       return line + '<br>';
     }).join('');
     
-    // Preserve spaces
     html = html.replace(/>([^<]+)</g, (match, text) => {
       return '>' + text.replace(/ /g, '&nbsp;') + '<';
     });
@@ -347,9 +240,7 @@ export default function MarkdownEditor() {
   const addImageElement = () => {
     const url = prompt('Enter image URL:');
     if (url) {
-      // Save current state to history before adding
-      setHistory([...history, { elements: [...elements] }]);
-      
+      saveToHistory();
       const newElement = {
         id: Date.now(),
         type: 'image',
@@ -366,9 +257,7 @@ export default function MarkdownEditor() {
   const addVideoElement = () => {
     const url = prompt('Enter video URL (YouTube, Vimeo, or embed link):');
     if (url) {
-      // Save current state to history before adding
-      setHistory([...history, { elements: [...elements] }]);
-      
+      saveToHistory();
       const embedUrl = convertToEmbedUrl(url);
       const newElement = {
         id: Date.now(),
@@ -394,6 +283,9 @@ export default function MarkdownEditor() {
         x: e.clientX - rect.left - element.x,
         y: e.clientY - rect.top - element.y
       });
+    } else if (selectedTool === 'eraser' && element.type === 'drawing') {
+      saveToHistory();
+      setElements(elements.filter(el => el.id !== element.id));
     }
   };
 
@@ -404,6 +296,22 @@ export default function MarkdownEditor() {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       }]);
+    } else if (selectedTool === 'eraser' && isDrawing) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      // Check if mouse is over any drawing and erase it
+      elements.forEach(el => {
+        if (el.type === 'drawing') {
+          const isNear = el.path.some(p => 
+            Math.abs(p.x - x) < 10 && Math.abs(p.y - y) < 10
+          );
+          if (isNear) {
+            setElements(prev => prev.filter(item => item.id !== el.id));
+          }
+        }
+      });
     } else if (isDragging && selectedElement) {
       const rect = canvasRef.current.getBoundingClientRect();
       setElements(elements.map(el => 
@@ -416,9 +324,7 @@ export default function MarkdownEditor() {
 
   const handleMouseUp = () => {
     if (selectedTool === 'pencil' && currentPath.length > 0) {
-      // Save current state to history before adding drawing
-      setHistory([...history, { elements: [...elements] }]);
-      
+      saveToHistory();
       const newElement = {
         id: Date.now(),
         type: 'drawing',
@@ -433,18 +339,18 @@ export default function MarkdownEditor() {
   };
 
   const handleCanvasMouseDown = (e) => {
-    if (selectedTool === 'pencil') {
+    if (selectedTool === 'pencil' || selectedTool === 'eraser') {
       setIsDrawing(true);
-      const rect = canvasRef.current.getBoundingClientRect();
-      setCurrentPath([{ x: e.clientX - rect.left, y: e.clientY - rect.top }]);
+      if (selectedTool === 'pencil') {
+        const rect = canvasRef.current.getBoundingClientRect();
+        setCurrentPath([{ x: e.clientX - rect.left, y: e.clientY - rect.top }]);
+      }
     }
   };
 
   const deleteElement = () => {
     if (selectedElement) {
-      // Save current state to history before deleting
-      setHistory([...history, { elements: [...elements] }]);
-      
+      saveToHistory();
       setElements(elements.filter(el => el.id !== selectedElement));
       setSelectedElement(null);
     }
@@ -464,10 +370,30 @@ export default function MarkdownEditor() {
     }
   };
 
-  const generateHTML = () => {
-    const parsedHTML = parseMarkdown(markdown);
-    
-    let html = `<!DOCTYPE html>
+  // Export function
+  const exportDocument = () => {
+    if (exportFormat === 'json') {
+      const data = {
+        version: '1.0',
+        markdown,
+        elements
+      };
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'document.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      setSaveStatus('JSON Exported');
+      setTimeout(() => setSaveStatus(''), 2000);
+    } else {
+      // HTML Export
+      const parsedHTML = parseMarkdown(markdown);
+      
+      let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -476,34 +402,24 @@ export default function MarkdownEditor() {
     <style>
         body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
         .container { position: relative; width: 100%; min-height: 100vh; background: white; }
-        .content { font-size: 16px; line-height: 1.6; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }
+        .content { font-size: 16px; line-height: 1.6; }
         .element { position: absolute; }
         svg { position: absolute; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; }
         h1 { font-size: 32px; font-weight: bold; margin: 16px 0; }
         h2 { font-size: 24px; font-weight: bold; margin: 14px 0; }
         h3 { font-size: 20px; font-weight: bold; margin: 12px 0; }
         
-        /* LaTeX Rendering Styles */
-        .latex-rendered, .equation-display {
-          display: inline-block;
-          font-family: 'Times New Roman', 'Computer Modern', serif;
-          font-size: 1.3rem;
-          line-height: 1.4;
-          margin: 0.5em 0;
-          padding: 0.3em;
-          text-align: center;
-        }
-        
         .equation-display {
           display: block;
+          font-family: 'Times New Roman', serif;
+          font-size: 1.3rem;
           margin: 1em 0;
           padding: 1em;
           background: #f8f9fa;
           border-radius: 4px;
-          border-left: 4px solid #007bff;
+          text-align: center;
         }
         
-        /* Fraction styling */
         .fraction {
           display: inline-block;
           vertical-align: middle;
@@ -530,7 +446,6 @@ export default function MarkdownEditor() {
           font-size: 0.9em;
         }
         
-        /* Square Root styling */
         .sqrt {
           display: inline-block;
           position: relative;
@@ -543,20 +458,6 @@ export default function MarkdownEditor() {
           margin-left: 0.3em;
         }
         
-        .nth-root {
-          display: inline-block;
-          position: relative;
-          margin: 0 0.2em;
-        }
-        
-        .root-index {
-          position: absolute;
-          left: -0.3em;
-          top: -0.5em;
-          font-size: 0.6em;
-        }
-        
-        /* Big operators (sum, integral, product) */
         .big-op {
           display: inline-block;
           position: relative;
@@ -582,205 +483,180 @@ export default function MarkdownEditor() {
           font-size: 0.6em;
           white-space: nowrap;
         }
-        
-        .limit {
-          display: inline-block;
-          position: relative;
-          margin: 0 0.3em;
-        }
-        
-        .limit .op-sub {
-          position: absolute;
-          bottom: -0.8em;
-          left: 50%;
-          transform: translateX(-50%);
-          font-size: 0.7em;
-          white-space: nowrap;
-        }
-        
-        .math-text {
-          font-family: Arial, sans-serif;
-          font-style: normal;
-        }
-        
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-          .latex-rendered, .equation-display {
-            font-size: 1.1rem;
-            padding: 1rem;
-          }
-          
-          .fraction {
-            margin: 0 0.2em;
-          }
-          
-          .big-op {
-            font-size: 1.4em;
-            margin: 0 0.3em;
-          }
-          
-          .sqrt {
-            font-size: 1.1em;
-          }
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <svg width="100%" height="100%">`;
 
-    elements.forEach(el => {
-      if (el.type === 'drawing') {
-        const pathData = el.path.map((p, i) => 
-          i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
-        ).join(' ');
-        html += `\n            <path d="${pathData}" stroke="${el.color}" fill="none" stroke-width="2"/>`;
-      }
-    });
+      elements.forEach(el => {
+        if (el.type === 'drawing') {
+          const pathData = el.path.map((p, i) => 
+            i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+          ).join(' ');
+          html += `\n            <path d="${pathData}" stroke="${el.color}" fill="none" stroke-width="2"/>`;
+        }
+      });
 
-    html += `\n        </svg>
+      html += `\n        </svg>
         <div class="content">${parsedHTML}</div>`;
 
-    elements.forEach(el => {
-      if (el.type === 'image') {
-        html += `\n        <img class="element" src="${el.src}" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; height: ${el.height}px;" alt="Image"/>`;
-      } else if (el.type === 'video') {
-        html += `\n        <iframe class="element" src="${el.src}" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; height: ${el.height}px;" frameborder="0" allowfullscreen></iframe>`;
-      }
-    });
+      elements.forEach(el => {
+        if (el.type === 'image') {
+          html += `\n        <img class="element" src="${el.src}" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; height: ${el.height}px;"/>`;
+        } else if (el.type === 'video') {
+          html += `\n        <div class="element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; height: ${el.height}px;"><iframe src="${el.src}" style="width: 100%; height: 100%; border: none;" allowfullscreen></iframe></div>`;
+        }
+      });
 
-    html += `\n    </div>
+      html += `\n    </div>
 </body>
 </html>`;
 
-    return html;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'document.html';
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      setSaveStatus('HTML Exported');
+      setTimeout(() => setSaveStatus(''), 2000);
+    }
   };
 
-  const downloadHTML = () => {
-    const html = generateHTML();
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'document.html';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const loadHTML = () => {
+  // Load function
+  const loadDocument = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.html';
+    input.accept = exportFormat === 'json' ? '.json' : '.html';
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          const htmlContent = event.target.result;
-          
-          // Extract markdown content from HTML
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(htmlContent, 'text/html');
-          const contentDiv = doc.querySelector('.content');
-          
-          if (contentDiv) {
-            // Try to reverse parse HTML back to markdown
-            let extractedText = contentDiv.innerHTML;
-            
-            // Remove <br> tags
-            extractedText = extractedText.replace(/<br\s*\/?>/gi, '\n');
-            
-            // Convert headings
-            extractedText = extractedText.replace(/<h1>(.*?)<\/h1>/gi, '# $1\n');
-            extractedText = extractedText.replace(/<h2>(.*?)<\/h2>/gi, '## $1\n');
-            extractedText = extractedText.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n');
-            
-            // Convert bold and italic
-            extractedText = extractedText.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
-            extractedText = extractedText.replace(/<em>(.*?)<\/em>/gi, '*$1*');
-            
-            // Convert color spans
-            extractedText = extractedText.replace(/<span style="color:\s*([^"]+)">(.*?)<\/span>/gi, '[c=$1]$2[/c]');
-            
-            // Convert font size spans
-            extractedText = extractedText.replace(/<span style="font-size:\s*(\d+)px">(.*?)<\/span>/gi, '[f=$1]$2[/f]');
-            
-            // Convert line spacing divs
-            extractedText = extractedText.replace(/<div style="line-height:\s*([0-9.]+)">(.*?)<\/div>/gi, '[lsp=$1]$2[/lsp]');
-            
-            // Convert space divs
-            extractedText = extractedText.replace(/<div style="height:\s*(\d+)px"><\/div>/gi, '[space=$1][/space]');
-            
-            // Convert equation displays back to [eq] tags
-            extractedText = extractedText.replace(/<div class="equation-display">(.*?)<\/div>/gi, '[eq]$1[/eq]');
-            
-            // Remove remaining HTML tags
-            extractedText = extractedText.replace(/<[^>]+>/g, '');
-            
-            // Decode HTML entities
-            extractedText = extractedText.replace(/&nbsp;/g, ' ');
-            extractedText = extractedText.replace(/&lt;/g, '<');
-            extractedText = extractedText.replace(/&gt;/g, '>');
-            extractedText = extractedText.replace(/&amp;/g, '&');
-            
-            setMarkdown(extractedText);
-          }
-          
-          // Extract drawing elements, images, and videos
-          const svgPaths = doc.querySelectorAll('svg path');
-          const imgs = doc.querySelectorAll('img.element');
-          const iframes = doc.querySelectorAll('iframe.element');
-          
-          const loadedElements = [];
-          
-          // Load drawings
-          svgPaths.forEach((path, index) => {
-            const d = path.getAttribute('d');
-            const stroke = path.getAttribute('stroke');
-            if (d) {
-              const pathPoints = d.split(/[ML]/).filter(p => p.trim()).map(p => {
-                const [x, y] = p.trim().split(' ').map(Number);
-                return { x, y };
-              });
-              loadedElements.push({
-                id: Date.now() + index,
-                type: 'drawing',
-                path: pathPoints,
-                color: stroke || '#000000'
-              });
+          if (exportFormat === 'json') {
+            // Load JSON
+            try {
+              const data = JSON.parse(event.target.result);
+              
+              if (data.markdown !== undefined) {
+                setMarkdown(data.markdown);
+              }
+              
+              if (data.elements) {
+                setElements(data.elements);
+              }
+              
+              setSaveStatus('JSON Loaded');
+              setTimeout(() => setSaveStatus(''), 2000);
+            } catch (error) {
+              alert('Error loading JSON file: ' + error.message);
             }
-          });
-          
-          // Load images
-          imgs.forEach((img, index) => {
-            const style = img.style;
-            loadedElements.push({
-              id: Date.now() + 1000 + index,
-              type: 'image',
-              src: img.getAttribute('src'),
-              x: parseInt(style.left) || 100,
-              y: parseInt(style.top) || 100,
-              width: parseInt(style.width) || 200,
-              height: parseInt(style.height) || 150
+          } else {
+            // Load HTML
+            const htmlContent = event.target.result;
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlContent, 'text/html');
+            const contentDiv = doc.querySelector('.content');
+            
+            if (contentDiv) {
+              let extractedText = contentDiv.innerHTML;
+              
+              // Extract equations with data-latex attribute
+              const equationDivs = contentDiv.querySelectorAll('.equation-display[data-latex]');
+              equationDivs.forEach(eqDiv => {
+                const latex = eqDiv.getAttribute('data-latex');
+                const placeholder = `___EQUATION_${Date.now()}_${Math.random()}___`;
+                extractedText = extractedText.replace(eqDiv.outerHTML, placeholder);
+                extractedText = extractedText.replace(placeholder, `[eq]${latex}[/eq]`);
+              });
+              
+              // Extract line spacing divs
+              const lspPattern = /<div style="line-height:\s*([0-9.]+)">([\s\S]*?)<\/div>/gi;
+              extractedText = extractedText.replace(lspPattern, (match, spacing, content) => {
+                // Remove inner HTML tags but keep the content structure
+                let innerContent = content.replace(/<br\s*\/?>/gi, '\n');
+                return `[lsp=${spacing}]\n${innerContent}\n[/lsp]`;
+              });
+              
+              extractedText = extractedText.replace(/<br\s*\/?>/gi, '\n');
+              extractedText = extractedText.replace(/<h1>(.*?)<\/h1>/gi, '# $1\n');
+              extractedText = extractedText.replace(/<h2>(.*?)<\/h2>/gi, '## $1\n');
+              extractedText = extractedText.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n');
+              extractedText = extractedText.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
+              extractedText = extractedText.replace(/<em>(.*?)<\/em>/gi, '*$1*');
+              extractedText = extractedText.replace(/<span style="color:\s*([^"]+)">(.*?)<\/span>/gi, '[c=$1]$2[/c]');
+              extractedText = extractedText.replace(/<span style="font-size:\s*(\d+)px">(.*?)<\/span>/gi, '[f=$1]$2[/f]');
+              extractedText = extractedText.replace(/<div style="height:\s*(\d+)px"><\/div>/gi, '[space=$1][/space]');
+              
+              extractedText = extractedText.replace(/<[^>]+>/g, '');
+              extractedText = extractedText.replace(/&nbsp;/g, ' ');
+              extractedText = extractedText.replace(/&lt;/g, '<');
+              extractedText = extractedText.replace(/&gt;/g, '>');
+              extractedText = extractedText.replace(/&amp;/g, '&');
+              extractedText = extractedText.replace(/&quot;/g, '"');
+              
+              setMarkdown(extractedText);
+            }
+            
+            const svgPaths = doc.querySelectorAll('svg path');
+            const imgs = doc.querySelectorAll('img.element');
+            const videoContainers = doc.querySelectorAll('.element iframe');
+            
+            const loadedElements = [];
+            
+            svgPaths.forEach((path, index) => {
+              const d = path.getAttribute('d');
+              const stroke = path.getAttribute('stroke');
+              if (d) {
+                const pathPoints = d.split(/[ML]/).filter(p => p.trim()).map(p => {
+                  const [x, y] = p.trim().split(' ').map(Number);
+                  return { x, y };
+                });
+                loadedElements.push({
+                  id: Date.now() + index,
+                  type: 'drawing',
+                  path: pathPoints,
+                  color: stroke || '#000000'
+                });
+              }
             });
-          });
-          
-          // Load videos
-          iframes.forEach((iframe, index) => {
-            const style = iframe.style;
-            loadedElements.push({
-              id: Date.now() + 2000 + index,
-              type: 'video',
-              src: iframe.getAttribute('src'),
-              x: parseInt(style.left) || 100,
-              y: parseInt(style.top) || 100,
-              width: parseInt(style.width) || 400,
-              height: parseInt(style.height) || 300
+            
+            imgs.forEach((img, index) => {
+              const style = img.style;
+              loadedElements.push({
+                id: Date.now() + 1000 + index,
+                type: 'image',
+                src: img.getAttribute('src'),
+                x: parseInt(style.left) || 100,
+                y: parseInt(style.top) || 100,
+                width: parseInt(style.width) || 200,
+                height: parseInt(style.height) || 150
+              });
             });
-          });
-          
-          setElements(loadedElements);
-          alert('HTML file loaded successfully!');
+            
+            videoContainers.forEach((iframe, index) => {
+              const parentDiv = iframe.parentElement;
+              if (parentDiv && parentDiv.classList.contains('element')) {
+                const style = parentDiv.style;
+                loadedElements.push({
+                  id: Date.now() + 2000 + index,
+                  type: 'video',
+                  src: iframe.getAttribute('src'),
+                  x: parseInt(style.left) || 100,
+                  y: parseInt(style.top) || 100,
+                  width: parseInt(style.width) || 400,
+                  height: parseInt(style.height) || 300
+                });
+              }
+            });
+            
+            setElements(loadedElements);
+            setSaveStatus('HTML Loaded');
+            setTimeout(() => setSaveStatus(''), 2000);
+          }
         };
         reader.readAsText(file);
       }
@@ -834,6 +710,13 @@ export default function MarkdownEditor() {
           <Pencil size={20} />
         </button>
         <button
+          onClick={() => toggleTool('eraser')}
+          style={selectedTool === 'eraser' ? activeButtonStyle : buttonStyle}
+          title="Eraser Tool"
+        >
+          <Eraser size={20} />
+        </button>
+        <button
           onClick={() => toggleTool('move')}
           style={selectedTool === 'move' ? activeButtonStyle : buttonStyle}
           title="Move Tool"
@@ -877,7 +760,8 @@ export default function MarkdownEditor() {
             ...buttonStyle,
             backgroundColor: history.length === 0 ? '#d1d5db' : '#8b5cf6',
             color: 'white',
-            cursor: history.length === 0 ? 'not-allowed' : 'pointer'
+            cursor: history.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: history.length === 0 ? 0.5 : 1
           }}
           title="Undo"
         >
@@ -885,8 +769,30 @@ export default function MarkdownEditor() {
         </button>
         
         <button
+          onClick={redo}
+          disabled={redoHistory.length === 0}
+          style={{
+            ...buttonStyle,
+            backgroundColor: redoHistory.length === 0 ? '#d1d5db' : '#8b5cf6',
+            color: 'white',
+            cursor: redoHistory.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: redoHistory.length === 0 ? 0.5 : 1
+          }}
+          title="Redo"
+        >
+          <Redo size={20} />
+        </button>
+        
+        <button
           onClick={deleteElement}
-          style={{ ...buttonStyle, backgroundColor: '#ef4444', color: 'white' }}
+          disabled={!selectedElement}
+          style={{ 
+            ...buttonStyle, 
+            backgroundColor: selectedElement ? '#ef4444' : '#d1d5db', 
+            color: 'white',
+            cursor: selectedElement ? 'pointer' : 'not-allowed',
+            opacity: selectedElement ? 1 : 0.5
+          }}
           title="Delete Selected"
         >
           <Trash2 size={20} />
@@ -915,17 +821,33 @@ export default function MarkdownEditor() {
           </>
         )}
         
+        <select
+          value={exportFormat}
+          onChange={(e) => setExportFormat(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            borderRadius: '4px',
+            border: '1px solid #d1d5db',
+            backgroundColor: 'white',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          <option value="html">HTML</option>
+          <option value="json">JSON</option>
+        </select>
+        
         <button
-          onClick={loadHTML}
+          onClick={loadDocument}
           style={{ ...buttonStyle, backgroundColor: '#22c55e', color: 'white', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
           <Upload size={20} /> Load
         </button>
         <button
-          onClick={downloadHTML}
+          onClick={exportDocument}
           style={{ ...buttonStyle, backgroundColor: '#3b82f6', color: 'white', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
-          <Download size={20} /> Download
+          <Download size={20} /> Export
         </button>
         <button
           onClick={clearAll}
@@ -1047,7 +969,8 @@ Equations:
               flex: 1,
               position: 'relative',
               overflow: 'auto',
-              cursor: selectedTool === 'pencil' ? 'crosshair' : 'default'
+              cursor: selectedTool === 'pencil' ? 'crosshair' : selectedTool === 'eraser' ? 'pointer' : 'default',
+              userSelect: 'none'
             }}
             onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleMouseMove}
@@ -1062,6 +985,11 @@ Equations:
                   stroke={el.color}
                   fill="none"
                   strokeWidth="2"
+                  style={{ pointerEvents: 'stroke', cursor: selectedTool === 'eraser' ? 'pointer' : 'default' }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    handleMouseDown(e, el);
+                  }}
                 />
               ))}
               {currentPath.length > 0 && (
@@ -1079,11 +1007,7 @@ Equations:
                 padding: '20px',
                 fontSize: '16px',
                 lineHeight: '1.6',
-                fontFamily: 'Arial, sans-serif',
-                userSelect: 'none',
-                WebkitUserSelect: 'none',
-                MozUserSelect: 'none',
-                msUserSelect: 'none'
+                fontFamily: 'Arial, sans-serif'
               }}
               dangerouslySetInnerHTML={{ __html: parseMarkdown(markdown) }}
             />
