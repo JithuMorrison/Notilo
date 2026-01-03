@@ -1899,6 +1899,12 @@ const Block = ({
     updateBlock(block.id, null, newType);
   };
 
+  const preventTextSelection = (e) => {
+    if (e.detail > 1) { // If double-click or more
+      e.preventDefault();
+    }
+  };
+
   const renderBlockContent = () => {
     switch (block.type) {
       case 'heading':
@@ -2341,6 +2347,7 @@ const Block = ({
         ) : (
           <div 
             className={`block-list ${isSelected ? 'selected' : ''}`}
+            onMouseDown={preventTextSelection}
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
@@ -2478,6 +2485,7 @@ const Block = ({
         ) : (
           <div 
             className={`image-block ${isSelected ? 'selected' : ''}`}
+            onMouseDown={preventTextSelection}
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
@@ -2591,6 +2599,7 @@ const Block = ({
         ) : (
           <div 
             className={`video-block ${isSelected ? 'selected' : ''}`}
+            onMouseDown={preventTextSelection}
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
@@ -2681,6 +2690,7 @@ const Block = ({
         ) : (
           <div 
             className={`equation-display ${isSelected ? 'selected' : ''}`}
+            onMouseDown={preventTextSelection}
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
@@ -2734,6 +2744,7 @@ const Block = ({
         ) : (
           <div 
             className={`drawing-display ${isSelected ? 'selected' : ''}`}
+            onMouseDown={preventTextSelection}
             onDoubleClick={() => onDoubleClick(block.id)}
             onClick={() => onSelect(block.id)}
           >
