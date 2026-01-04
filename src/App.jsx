@@ -12,7 +12,11 @@ function App() {
   const [currentSection, setCurrentSection] = useState('notes');
 
   const toggleSection = () => {
+    const section = currentSection
     setCurrentSection(prevSection => prevSection === 'notes' ? 'make' : 'notes');
+    if (section == 'make'){
+      setSelectedFile(null);
+    }
   };
 
   // Load data from localStorage on initial render
