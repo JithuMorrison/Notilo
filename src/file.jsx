@@ -21,8 +21,8 @@ const parseContent = (content) => {
   const parts = [];
   let lastIndex = 0;
   
-  // Combined regex for all formatting tags
-  const formatRegex = /<(link|b|i|c=([^>]+))>(.*?)<\/(?:link|b|i|c)>/g;
+  // Combined regex for all formatting tags including checkboxes
+  const formatRegex = /<(link|b|i|c=([^>]+)|chk)>(.*?)<\/(?:link|b|i|c|chk)>/g;
   let match;
 
   while ((match = formatRegex.exec(content)) !== null) {
@@ -59,6 +59,12 @@ const parseContent = (content) => {
           {innerText}
         </span>
       );
+    } else if (tag === 'chk') {
+      // Generate a unique ID based on the text content and position
+      const checkboxId = `${innerText}_${start}`.replace(/[^a-zA-Z0-9]/g, '_');
+      parts.push(
+        <CheckboxText key={start} text={innerText} checkboxId={checkboxId} />
+      );
     }
 
     lastIndex = formatRegex.lastIndex;
@@ -71,6 +77,36 @@ const parseContent = (content) => {
 
   return parts.length > 0 ? parts : content;
 }
+
+// Checkbox Text Component for inline checkboxes
+const CheckboxText = ({ text, checkboxId }) => {
+  const [isChecked, setIsChecked] = useState(() => {
+    // Load state from localStorage on initialization
+    const saved = localStorage.getItem(`checkbox_${checkboxId}`);
+    return saved === 'true';
+  });
+  
+  const handleToggle = (e) => {
+    const newChecked = e.target.checked;
+    setIsChecked(newChecked);
+    // Save state to localStorage
+    localStorage.setItem(`checkbox_${checkboxId}`, newChecked.toString());
+  };
+  
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+      <input
+        type="checkbox"
+        checked={isChecked}
+        onChange={handleToggle}
+        style={{ margin: 0 }}
+      />
+      <span style={{ textDecoration: isChecked ? 'line-through' : 'none' }}>
+        {text}
+      </span>
+    </span>
+  );
+};
 
 // LaTeX Renderer Component
 const LaTeXRenderer = ({ latex }) => {
@@ -405,6 +441,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
       type,
       content: type === 'heading' ? { text: 'Heading', fontSize: 24, color: '#000000' } : 
                type === 'list' ? { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] } : 
+               type === 'checkbox' ? { heading: 'Checkbox List', items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }] } :
                type === 'image' ? { images: [] } :
                type === 'video' ? { videos: [] } :
                type === 'equation' ? { latex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' } :
@@ -426,6 +463,7 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
             ...block, 
             type: newType,
             content: newType === 'list' ? { heading: 'List Heading', items: [{ text: 'Item 1', sublists: [], images: [], videos: [] }] } : 
+                     newType === 'checkbox' ? { heading: 'Checkbox List', items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }] } :
                      newType === 'image' ? { images: [] } :
                      newType === 'video' ? { videos: [] } :
                      newType === 'heading' ? { text: 'Heading', fontSize: 24, color: '#000000' } :
@@ -541,20 +579,24 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
   const exportFileAsJson = () => {
     if (!selectedFile) return;
     
-    const data = {
+    // Use the current blocks state which should be up-to-date
+    const currentFileData = {
       ...selectedFile,
+      content: blocks, // Use the current blocks state
+      updatedAt: new Date().toISOString(),
       exportedAt: new Date().toISOString(),
-      editorVersion: '2.0', // Version identifier for content structure
+      editorVersion: '2.0',
       contentStructure: {
         supportsNestedSublists: true,
         supportsFormattedText: true,
         supportsEquations: true,
         supportsDrawings: true,
-        supportsStyledHeadings: true
+        supportsStyledHeadings: true,
+        supportsCheckboxLists: true
       }
     };
     
-    const json = JSON.stringify(data, null, 2);
+    const json = JSON.stringify(currentFileData, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     
@@ -706,6 +748,53 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
         height: 300
       };
       migrated = true;
+    }
+    
+    // Ensure checkbox blocks have proper structure
+    if (block.type === 'checkbox') {
+      const ensureCheckboxStructure = (item) => {
+        return {
+          text: item.text || '',
+          checked: item.checked || false,
+          sublists: (item.sublists || []).map(ensureCheckboxStructure),
+          images: item.images || [],
+          videos: item.videos || []
+        };
+      };
+
+      if (!block.content || typeof block.content !== 'object') {
+        migratedBlock.content = {
+          heading: 'Checkbox List',
+          items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }]
+        };
+        migrated = true;
+      } else if (Array.isArray(block.content)) {
+        migratedBlock.content = {
+          heading: 'Checkbox List',
+          items: block.content.map(item => 
+            typeof item === 'string' 
+              ? { text: item, checked: false, sublists: [], images: [], videos: [] }
+              : ensureCheckboxStructure(item)
+          )
+        };
+        migrated = true;
+      } else if (typeof block.content === 'object') {
+        // Ensure all items and sublists have checked properties
+        const needsMigration = !block.content.items || 
+                              !Array.isArray(block.content.items) ||
+                              block.content.items.some(item => 
+                                typeof item.checked === 'undefined' ||
+                                (item.sublists && item.sublists.some(sub => typeof sub.checked === 'undefined'))
+                              );
+        
+        if (needsMigration) {
+          migratedBlock.content = {
+            heading: block.content.heading || 'Checkbox List',
+            items: (block.content.items || []).map(ensureCheckboxStructure)
+          };
+          migrated = true;
+        }
+      }
     }
     
     return { block: migratedBlock, migrated };
@@ -1281,6 +1370,50 @@ const Block = ({
         ? block.content 
         : { strokes: [], width: 400, height: 300 };
     }
+    if (block.type === 'checkbox') {
+      if (!block.content) {
+        return { heading: 'Checkbox List', items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }] };
+      }
+      
+      // If it's an array (old format), convert it
+      if (Array.isArray(block.content)) {
+        return { 
+          heading: 'Checkbox List', 
+          items: block.content.map(item => 
+            typeof item === 'string' 
+              ? { text: item, checked: false, sublists: [], images: [], videos: [] }
+              : { ...item, checked: item.checked || false }
+          ) 
+        };
+      }
+      
+      // If it's a proper object, ensure it has the right structure
+      if (typeof block.content === 'object') {
+        const ensureCheckboxStructure = (item) => {
+          const result = {
+            text: item.text || '',
+            checked: item.checked || false,
+            sublists: (item.sublists || []).map(ensureCheckboxStructure),
+            images: item.images || [],
+            videos: item.videos || []
+          };
+          return result;
+        };
+
+        return {
+          heading: block.content.heading || 'Checkbox List',
+          items: Array.isArray(block.content.items) 
+            ? block.content.items.map(item => 
+                typeof item === 'string' 
+                  ? { text: item, checked: false, sublists: [], images: [], videos: [] }
+                  : ensureCheckboxStructure(item)
+              )
+            : [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }]
+        };
+      }
+      
+      return { heading: 'Checkbox List', items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }] };
+    }
     // For paragraph and other simple text types
     return block.content || '';
   });
@@ -1428,11 +1561,21 @@ const Block = ({
     // Ensure the item exists and has proper structure
     if (!newItems[listIndex]) {
       newItems[listIndex] = { text: '', sublists: [], images: [], videos: [] };
+      // Add checked property if this is a checkbox block
+      if (block.type === 'checkbox') {
+        newItems[listIndex].checked = false;
+      }
+    }
+    
+    const newSublistItem = { text: 'Subitem', sublists: [], images: [], videos: [] };
+    // Add checked property if this is a checkbox block
+    if (block.type === 'checkbox') {
+      newSublistItem.checked = false;
     }
     
     newItems[listIndex] = {
       ...newItems[listIndex],
-      sublists: [...(newItems[listIndex].sublists || []), { text: 'Subitem', sublists: [], images: [], videos: [] }]
+      sublists: [...(newItems[listIndex].sublists || []), newSublistItem]
     };
     const newContent = { 
       ...safeContent, 
@@ -1442,85 +1585,85 @@ const Block = ({
     updateBlock(block.id, newContent);
   };
 
-  const updateSublist = (listIndex, subIndex, value) => {
-    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
-      ? content 
-      : { heading: 'List Heading', items: [] };
+  // const updateSublist = (listIndex, subIndex, value) => {
+  //   const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+  //     ? content 
+  //     : { heading: 'List Heading', items: [] };
       
-    const newItems = [...(safeContent.items || [])];
+  //   const newItems = [...(safeContent.items || [])];
     
-    // Ensure proper structure exists
-    if (!newItems[listIndex]) {
-      newItems[listIndex] = { text: '', sublists: [], images: [], videos: [] };
-    }
-    if (!newItems[listIndex].sublists) {
-      newItems[listIndex].sublists = [];
-    }
-    if (!newItems[listIndex].sublists[subIndex]) {
-      newItems[listIndex].sublists[subIndex] = { text: '', sublists: [], images: [], videos: [] };
-    }
+  //   // Ensure proper structure exists
+  //   if (!newItems[listIndex]) {
+  //     newItems[listIndex] = { text: '', sublists: [], images: [], videos: [] };
+  //   }
+  //   if (!newItems[listIndex].sublists) {
+  //     newItems[listIndex].sublists = [];
+  //   }
+  //   if (!newItems[listIndex].sublists[subIndex]) {
+  //     newItems[listIndex].sublists[subIndex] = { text: '', sublists: [], images: [], videos: [] };
+  //   }
     
-    newItems[listIndex].sublists[subIndex] = { 
-      ...newItems[listIndex].sublists[subIndex], 
-      text: value 
-    };
-    const newContent = { 
-      ...safeContent, 
-      items: newItems 
-    };
-    setContent(newContent);
-    updateBlock(block.id, newContent);
-  };
+  //   newItems[listIndex].sublists[subIndex] = { 
+  //     ...newItems[listIndex].sublists[subIndex], 
+  //     text: value 
+  //   };
+  //   const newContent = { 
+  //     ...safeContent, 
+  //     items: newItems 
+  //   };
+  //   setContent(newContent);
+  //   updateBlock(block.id, newContent);
+  // };
 
-  const removeSublist = (listIndex, subIndex) => {
-    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
-      ? content 
-      : { heading: 'List Heading', items: [] };
+  // const removeSublist = (listIndex, subIndex) => {
+  //   const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+  //     ? content 
+  //     : { heading: 'List Heading', items: [] };
       
-    const newItems = [...(safeContent.items || [])];
-    if (newItems[listIndex] && newItems[listIndex].sublists) {
-      newItems[listIndex].sublists = newItems[listIndex].sublists.filter((_, i) => i !== subIndex);
-    }
-    const newContent = { 
-      ...safeContent, 
-      items: newItems 
-    };
-    setContent(newContent);
-    updateBlock(block.id, newContent);
-  };
+  //   const newItems = [...(safeContent.items || [])];
+  //   if (newItems[listIndex] && newItems[listIndex].sublists) {
+  //     newItems[listIndex].sublists = newItems[listIndex].sublists.filter((_, i) => i !== subIndex);
+  //   }
+  //   const newContent = { 
+  //     ...safeContent, 
+  //     items: newItems 
+  //   };
+  //   setContent(newContent);
+  //   updateBlock(block.id, newContent);
+  // };
 
-  const addSublistToSublist = (listIndex, subIndex, text = 'Sub-subitem') => {
-    const newItems = [...(content?.items || [])];
-    if (!newItems[listIndex].sublists[subIndex].sublists) {
-      newItems[listIndex].sublists[subIndex].sublists = [];
-    }
-    newItems[listIndex].sublists[subIndex].sublists.push({ 
-      text, 
-      sublists: [], 
-      images: [], 
-      videos: [] 
-    });
-    const newContent = { 
-      ...(content || {}), 
-      items: newItems 
-    };
-    setContent(newContent);
-    updateBlock(block.id, newContent);
-  };
+  // const addSublistToSublist = (listIndex, subIndex, text = 'Sub-subitem') => {
+  //   const newItems = [...(content?.items || [])];
+  //   if (!newItems[listIndex].sublists[subIndex].sublists) {
+  //     newItems[listIndex].sublists[subIndex].sublists = [];
+  //   }
+  //   newItems[listIndex].sublists[subIndex].sublists.push({ 
+  //     text, 
+  //     sublists: [], 
+  //     images: [], 
+  //     videos: [] 
+  //   });
+  //   const newContent = { 
+  //     ...(content || {}), 
+  //     items: newItems 
+  //   };
+  //   setContent(newContent);
+  //   updateBlock(block.id, newContent);
+  // };
 
-  const updateSubSublist = (listIndex, subIndex, subSubIndex, value) => {
-    const newItems = [...(content?.items || [])];
-    newItems[listIndex].sublists[subIndex].sublists[subSubIndex] = {
-      ...newItems[listIndex].sublists[subIndex].sublists[subSubIndex],
-      text: value
-    };
-    const newContent = { 
-      ...(content || {}), 
-      items: newItems 
-    };
-    setContent(newContent);
-    updateBlock(block.id, newContent);
-  };
+  // const updateSubSublist = (listIndex, subIndex, subSubIndex, value) => {
+  //   const newItems = [...(content?.items || [])];
+  //   newItems[listIndex].sublists[subIndex].sublists[subSubIndex] = {
+  //     ...newItems[listIndex].sublists[subIndex].sublists[subSubIndex],
+  //     text: value
+  //   };
+  //   const newContent = { 
+  //     ...(content || {}), 
+  //     items: newItems 
+  //   };
+  //   setContent(newContent);
+  //   updateBlock(block.id, newContent);
+  // };
 
   const addNestedSublist = (listIndex, subIndex, depth, text = 'Sub-subitem') => {
     const safeContent = content && typeof content === 'object' && !Array.isArray(content)
@@ -1533,6 +1676,9 @@ const Block = ({
     let currentItem = newItems[listIndex];
     if (!currentItem) {
       currentItem = { text: '', sublists: [], images: [], videos: [] };
+      if (block.type === 'checkbox') {
+        currentItem.checked = false;
+      }
       newItems[listIndex] = currentItem;
     }
     
@@ -1541,6 +1687,9 @@ const Block = ({
       if (!currentItem.sublists) currentItem.sublists = [];
       if (!currentItem.sublists[subIndex[i]]) {
         currentItem.sublists[subIndex[i]] = { text: '', sublists: [], images: [], videos: [] };
+        if (block.type === 'checkbox') {
+          currentItem.sublists[subIndex[i]].checked = false;
+        }
       }
       currentItem = currentItem.sublists[subIndex[i]];
     }
@@ -1549,12 +1698,12 @@ const Block = ({
       currentItem.sublists = [];
     }
     
-    currentItem.sublists.push({ 
-      text, 
-      sublists: [], 
-      images: [], 
-      videos: [] 
-    });
+    const newSublistItem = { text, sublists: [], images: [], videos: [] };
+    if (block.type === 'checkbox') {
+      newSublistItem.checked = false;
+    }
+    
+    currentItem.sublists.push(newSublistItem);
     
     const newContent = { 
       ...safeContent, 
@@ -1584,6 +1733,67 @@ const Block = ({
     if (currentItem.sublists && currentItem.sublists[subIndex[subIndex.length - 1]]) {
       currentItem.sublists[subIndex[subIndex.length - 1]].text = value;
     }
+    
+    const newContent = { 
+      ...safeContent, 
+      items: newItems 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
+  };
+
+  const toggleNestedSublistCheckbox = (listIndex, subIndex, depth) => {
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
+    
+    // Navigate to the correct nested level
+    let currentItem = newItems[listIndex];
+    if (!currentItem) return;
+    
+    // Navigate through the subIndex array to find the right sublist
+    for (let i = 0; i < subIndex.length - 1; i++) {
+      if (!currentItem.sublists || !currentItem.sublists[subIndex[i]]) return;
+      currentItem = currentItem.sublists[subIndex[i]];
+    }
+    
+    if (currentItem.sublists && currentItem.sublists[subIndex[subIndex.length - 1]]) {
+      const targetItem = currentItem.sublists[subIndex[subIndex.length - 1]];
+      targetItem.checked = !targetItem.checked;
+    }
+    
+    const newContent = { 
+      ...safeContent, 
+      items: newItems 
+    };
+    setContent(newContent);
+    updateBlock(block.id, newContent);
+  };
+
+  const toggleSublistCheckboxInView = (parentPath, itemIndex) => {
+    const safeContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content 
+      : { heading: 'List Heading', items: [] };
+      
+    const newItems = [...(safeContent.items || [])];
+    
+    // Navigate through the path to find the target sublist
+    let currentItem = newItems[itemIndex];
+    if (!currentItem) return;
+    
+    // Navigate through the parentPath to find the right sublist
+    for (let i = 0; i < parentPath.length; i += 2) {
+      if (parentPath[i] === 'sublists' && parentPath[i + 1] !== undefined) {
+        const subIndex = parentPath[i + 1];
+        if (!currentItem.sublists || !currentItem.sublists[subIndex]) return;
+        currentItem = currentItem.sublists[subIndex];
+      }
+    }
+    
+    // Toggle the checkbox
+    currentItem.checked = !currentItem.checked;
     
     const newContent = { 
       ...safeContent, 
@@ -1623,21 +1833,35 @@ const Block = ({
   };
 
   // Recursive function to render sublists
-  const renderSublist = (sublist, depth = 0) => {
+  const renderSublist = (sublist, depth = 0, parentPath = [], itemIndex = 0) => {
     const bulletStyle = depth === 0 ? '◦' : depth === 1 ? '▪' : '▫';
     const marginLeft = `${depth * 0.01 - 1}rem`; // Linear spacing: 0, 1.2rem, 2.4rem, 3.6rem...
     
     return (
       <div key={sublist.id || Math.random()} className="sublist-container" style={{ marginLeft }}>
         <div className="sublist-item-display">
-          {bulletStyle} {sublist.text || ''}
+          {block.type === 'checkbox' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={sublist.checked || false}
+                onChange={() => toggleSublistCheckboxInView(parentPath, itemIndex)}
+                style={{ margin: 0 }}
+              />
+              <span style={{ textDecoration: sublist.checked ? 'line-through' : 'none' }}>
+                {sublist.text || ''}
+              </span>
+            </div>
+          ) : (
+            <span>{bulletStyle} {sublist.text || ''}</span>
+          )}
         </div>
         
         {/* Recursively render nested sublists */}
         {sublist.sublists && sublist.sublists.length > 0 && (
           <div className="nested-sublists-display">
             {sublist.sublists.map((nestedSublist, k) => 
-              renderSublist(nestedSublist, depth + 1)
+              renderSublist(nestedSublist, depth + 1, [...parentPath, 'sublists', k], itemIndex)
             )}
           </div>
         )}
@@ -1680,11 +1904,23 @@ const Block = ({
     return (
       <div key={`${listIndex}-${subIndex}-${depth}`} className="sublist-container" style={{ marginLeft }}>
         <div className="sublist-item">
+          {block.type === 'checkbox' && (
+            <input
+              type="checkbox"
+              checked={sublist.checked || false}
+              onChange={() => toggleNestedSublistCheckbox(listIndex, subIndex, depth)}
+              style={{ marginRight: '0.5rem' }}
+            />
+          )}
           <input
             type="text"
             value={sublist.text || ''}
             onChange={(e) => updateNestedSublist(listIndex, subIndex, depth, e.target.value)}
             placeholder="Subitem"
+            style={{ 
+              textDecoration: block.type === 'checkbox' && sublist.checked ? 'line-through' : 'none',
+              flexGrow: 1
+            }}
           />
           <button onClick={() => removeNestedSublist(listIndex, subIndex, depth)}>×</button>
           <button onClick={() => addNestedSublist(listIndex, subIndex, depth)}>+ Sub</button>
@@ -2017,6 +2253,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
@@ -2030,12 +2267,12 @@ const Block = ({
                   updateBlock(block.id, e.target.value);
                 }}
                 className="block-paragraph"
-                placeholder="Type something... Use <b>bold</b>, <i>italic</i>, <c=red>colored text</c>, <link>url</link>"
+                placeholder="Type something... Use <b>bold</b>, <i>italic</i>, <c=red>colored text</c>, <link>url</link>, <chk>checkbox text</chk>"
                 autoFocus
               />
               <div className="formatting-help">
                 <small>
-                  Formatting: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;c=red&gt;color&lt;/c&gt;, &lt;link&gt;url&lt;/link&gt;
+                  Formatting: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;c=red&gt;color&lt;/c&gt;, &lt;link&gt;url&lt;/link&gt;, &lt;chk&gt;checkbox&lt;/chk&gt;
                 </small>
               </div>
             </div>
@@ -2127,6 +2364,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
@@ -2360,7 +2598,7 @@ const Block = ({
                 {item.sublists && item.sublists.length > 0 && (
                   <div className="sublists-display">
                     {item.sublists.map((subitem, j) => 
-                      renderSublist(subitem, 0)
+                      renderSublist(subitem, 0, ['sublists', j], i)
                     )}
                   </div>
                 )}
@@ -2410,6 +2648,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
@@ -2508,6 +2747,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
@@ -2632,6 +2872,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
@@ -2697,6 +2938,421 @@ const Block = ({
             <LaTeXRenderer latex={safeEquationContent.latex || ''} />
           </div>
         );
+      case 'checkbox':
+        // Ensure proper content structure for checkbox lists
+        const safeCheckboxContent = (() => {
+          if (!content) {
+            return { heading: 'Checkbox List', items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }] };
+          }
+          
+          // If content is a string or array (old format), convert it
+          if (typeof content === 'string' || Array.isArray(content)) {
+            return { 
+              heading: 'Checkbox List', 
+              items: Array.isArray(content) 
+                ? content.map(item => 
+                    typeof item === 'string' 
+                      ? { text: item, checked: false, sublists: [], images: [], videos: [] }
+                      : { ...item, checked: item.checked || false }
+                  )
+                : [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }]
+            };
+          }
+          
+          // If content is an object but missing structure, fix it
+          if (typeof content === 'object') {
+            return {
+              heading: content.heading || 'Checkbox List',
+              items: Array.isArray(content.items) 
+                ? content.items.map(item => 
+                    typeof item === 'string' 
+                      ? { text: item, checked: false, sublists: [], images: [], videos: [] }
+                      : {
+                          text: item.text || '',
+                          checked: item.checked || false,
+                          sublists: item.sublists || [],
+                          images: item.images || [],
+                          videos: item.videos || []
+                        }
+                  )
+                : [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }]
+            };
+          }
+          
+          return { heading: 'Checkbox List', items: [{ text: 'Task 1', checked: false, sublists: [], images: [], videos: [] }] };
+        })();
+        
+        const safeCheckboxItems = safeCheckboxContent.items || [];
+        
+        // Checkbox-specific functions
+        const handleCheckboxListHeadingChange = (e) => {
+          const newContent = { 
+            ...safeCheckboxContent,
+            heading: e.target.value 
+          };
+          setContent(newContent);
+          updateBlock(block.id, newContent);
+        };
+
+        const handleCheckboxListChange = (listIndex, value) => {
+          const newItems = [...safeCheckboxItems];
+          if (!newItems[listIndex]) {
+            newItems[listIndex] = { text: '', checked: false, sublists: [], images: [], videos: [] };
+          }
+          newItems[listIndex] = { 
+            ...newItems[listIndex], 
+            text: value 
+          };
+          const newContent = { 
+            ...safeCheckboxContent, 
+            items: newItems 
+          };
+          setContent(newContent);
+          updateBlock(block.id, newContent);
+        };
+
+        const handleCheckboxToggle = (listIndex) => {
+          const newItems = [...safeCheckboxItems];
+          if (!newItems[listIndex]) {
+            newItems[listIndex] = { text: '', checked: false, sublists: [], images: [], videos: [] };
+          }
+          newItems[listIndex] = { 
+            ...newItems[listIndex], 
+            checked: !newItems[listIndex].checked 
+          };
+          const newContent = { 
+            ...safeCheckboxContent, 
+            items: newItems 
+          };
+          setContent(newContent);
+          updateBlock(block.id, newContent);
+        };
+
+        const addCheckboxListItem = () => {
+          const newItems = [...safeCheckboxItems, { text: 'New task', checked: false, sublists: [], images: [], videos: [] }];
+          const newContent = { 
+            ...safeCheckboxContent, 
+            items: newItems 
+          };
+          setContent(newContent);
+          updateBlock(block.id, newContent);
+        };
+
+        const removeCheckboxListItem = (listIndex) => {
+          if (safeCheckboxItems.length <= 1) {
+            deleteBlock(block.id);
+            return;
+          }
+          const newItems = safeCheckboxItems.filter((_, i) => i !== listIndex);
+          const newContent = { 
+            ...safeCheckboxContent, 
+            items: newItems 
+          };
+          setContent(newContent);
+          updateBlock(block.id, newContent);
+        };
+        
+        return isEditing ? (
+          <div className="editing-block">
+            <select
+              value={block.type}
+              onChange={handleTypeChange}
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="heading">Heading</option>
+              <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+              <option value="equation">Equation</option>
+              <option value="drawing">Drawing</option>
+            </select><br/>
+            <input
+              type="text"
+              value={safeCheckboxContent.heading || ''}
+              onChange={handleCheckboxListHeadingChange}
+              className="list-heading-input"
+              placeholder="Checkbox List Heading"
+              autoFocus
+            />
+            {safeCheckboxItems.map((item, i) => (
+              <div key={i} className="list-item-container">
+                <div className="list-item">
+                  <input
+                    type="checkbox"
+                    checked={item.checked || false}
+                    onChange={() => handleCheckboxToggle(i)}
+                  />
+                  <input
+                    type="text"
+                    value={item.text || ''}
+                    onChange={(e) => handleCheckboxListChange(i, e.target.value)}
+                    placeholder="Task item"
+                    style={{ textDecoration: item.checked ? 'line-through' : 'none' }}
+                  />
+                  <button onClick={() => removeCheckboxListItem(i)}>×</button>
+                  <button onClick={() => addSublist(i)}>+ Sub</button>
+                  <button onClick={() => addImageToItem(i, prompt('Enter image URL:') || '')}>+ Img</button>
+                  <button onClick={() => addVideoToItem(i, prompt('Enter video URL:') || '')}>+ Vid</button>
+                </div>
+                
+                {/* Sublists */}
+                {item.sublists && item.sublists.length > 0 && (
+                  <div className="sublists">
+                    {item.sublists.map((subitem, j) => 
+                      renderEditableSublist(subitem, i, [j], 0)
+                    )}
+                  </div>
+                )}
+                
+                {/* Images */}
+                {item.images && item.images.length > 0 && (
+                  <div className="item-images">
+                    {item.images.map((img, j) => (
+                      <div key={j} className="image-container">
+                        <img src={img.url} alt="" style={{ width: img.width, height: img.height }} />
+                        <div className="image-controls">
+                          <input
+                            type="number"
+                            value={img.width}
+                            onChange={(e) => updateImageInItem(i, j, 'width', parseInt(e.target.value))}
+                            placeholder="Width"
+                          />
+                          <input
+                            type="number"
+                            value={img.height}
+                            onChange={(e) => updateImageInItem(i, j, 'height', parseInt(e.target.value))}
+                            placeholder="Height"
+                          />
+                          <button onClick={() => removeImageFromItem(i, j)}>×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Videos */}
+                {item.videos && item.videos.length > 0 && (
+                  <div className="item-videos">
+                    {item.videos.map((vid, j) => (
+                      <div key={j} className="video-container">
+                        <iframe 
+                          src={vid.url} 
+                          width={vid.width} 
+                          height={vid.height}
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title={`Video ${j + 1}`}
+                        />
+                        <div className="video-controls">
+                          <input
+                            type="text"
+                            value={vid.originalUrl || vid.url}
+                            onChange={(e) => updateVideoInItem(i, j, 'url', e.target.value)}
+                            placeholder="Video URL"
+                          />
+                          <input
+                            type="number"
+                            value={vid.width}
+                            onChange={(e) => updateVideoInItem(i, j, 'width', parseInt(e.target.value))}
+                            placeholder="Width"
+                          />
+                          <input
+                            type="number"
+                            value={vid.height}
+                            onChange={(e) => updateVideoInItem(i, j, 'height', parseInt(e.target.value))}
+                            placeholder="Height"
+                          />
+                          <button onClick={() => removeVideoFromItem(i, j)}>×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="list-actions">
+              <button onClick={addCheckboxListItem}>+ Add task</button>
+              <button 
+                className="add-block-below"
+                onClick={() => addBlock('paragraph', index)}
+              >
+                +
+              </button>
+              <button onClick={onFinishEditing}>Done</button>
+            </div>
+          </div>
+        ) : editMode ? (
+          <div className="block-list">
+            <input
+              type="text"
+              value={safeCheckboxContent.heading || ''}
+              onChange={handleCheckboxListHeadingChange}
+              className="list-heading-input"
+              placeholder="Checkbox List Heading"
+            />
+            {safeCheckboxItems.map((item, i) => (
+              <div key={i} className="list-item-container" style={{ marginBottom: i !== safeCheckboxItems.length - 1 ? '1rem' : '0rem' }}>
+                <div className="list-item">
+                  <input
+                    type="checkbox"
+                    checked={item.checked || false}
+                    onChange={() => handleCheckboxToggle(i)}
+                  />
+                  <input
+                    type="text"
+                    value={item.text || ''}
+                    onChange={(e) => handleCheckboxListChange(i, e.target.value)}
+                    placeholder="Task item"
+                    style={{ textDecoration: item.checked ? 'line-through' : 'none' }}
+                  />
+                  <button onClick={() => removeCheckboxListItem(i)}>×</button>
+                  <button onClick={() => addSublist(i)}>+ Sub</button>
+                  <button onClick={() => addImageToItem(i, prompt('Enter image URL:') || '')}>+ Img</button>
+                  <button onClick={() => addVideoToItem(i, prompt('Enter video URL:') || '')}>+ Vid</button>
+                </div>
+                
+                {/* Sublists */}
+                {item.sublists && item.sublists.length > 0 && (
+                  <div className="sublists">
+                    {item.sublists.map((subitem, j) => 
+                      renderEditableSublist(subitem, i, [j], 0)
+                    )}
+                  </div>
+                )}
+                
+                {/* Images */}
+                {item.images && item.images.length > 0 && (
+                  <div className="item-images">
+                    {item.images.map((img, j) => (
+                      <div key={j} className="image-container">
+                        <img src={img.url} alt="" style={{ width: img.width, height: img.height }} />
+                        <div className="image-controls">
+                          <input
+                            type="number"
+                            value={img.width}
+                            onChange={(e) => updateImageInItem(i, j, 'width', parseInt(e.target.value))}
+                            placeholder="Width"
+                          />
+                          <input
+                            type="number"
+                            value={img.height}
+                            onChange={(e) => updateImageInItem(i, j, 'height', parseInt(e.target.value))}
+                            placeholder="Height"
+                          />
+                          <button onClick={() => removeImageFromItem(i, j)}>×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Videos */}
+                {item.videos && item.videos.length > 0 && (
+                  <div className="item-videos">
+                    {item.videos.map((vid, j) => (
+                      <div key={j} className="video-container">
+                        <iframe 
+                          src={vid.url} 
+                          width={vid.width} 
+                          height={vid.height}
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title={`Video ${j + 1}`}
+                        />
+                        <div className="video-controls">
+                          <input
+                            type="text"
+                            value={vid.originalUrl || vid.url}
+                            onChange={(e) => updateVideoInItem(i, j, 'url', e.target.value)}
+                            placeholder="Video URL"
+                          />
+                          <input
+                            type="number"
+                            value={vid.width}
+                            onChange={(e) => updateVideoInItem(i, j, 'width', parseInt(e.target.value))}
+                            placeholder="Width"
+                          />
+                          <input
+                            type="number"
+                            value={vid.height}
+                            onChange={(e) => updateVideoInItem(i, j, 'height', parseInt(e.target.value))}
+                            placeholder="Height"
+                          />
+                          <button onClick={() => removeVideoFromItem(i, j)}>×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            <button onClick={addCheckboxListItem}>+ Add task</button>
+          </div>
+        ) : (
+          <div 
+            className={`block-list ${isSelected ? 'selected' : ''}`}
+            onMouseDown={preventTextSelection}
+            onDoubleClick={() => onDoubleClick(block.id)}
+            onClick={() => onSelect(block.id)}
+          >
+            <h4 className="list-heading-display">{safeCheckboxContent.heading || 'Checkbox List'}</h4>
+            {safeCheckboxItems.map((item, i) => (
+              <div key={i} className="list-item-display-container">
+                <div className="list-item-display" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={item.checked || false}
+                    onChange={() => handleCheckboxToggle(i)}
+                    style={{ margin: 0 }}
+                  />
+                  <span style={{ textDecoration: item.checked ? 'line-through' : 'none' }}>
+                    {item.text || ''}
+                  </span>
+                </div>
+                
+                {/* Sublists */}
+                {item.sublists && item.sublists.length > 0 && (
+                  <div className="sublists-display">
+                    {item.sublists.map((subitem, j) => 
+                      renderSublist(subitem, 0, ['sublists', j], i)
+                    )}
+                  </div>
+                )}
+                
+                {/* Images */}
+                {item.images && item.images.length > 0 && (
+                  <div className="item-images-display">
+                    {item.images.map((img, j) => (
+                      <img key={j} src={img.url} alt="" style={{ width: img.width, height: img.height, margin: '5px' }} />
+                    ))}
+                  </div>
+                )}
+                
+                {/* Videos */}
+                {item.videos && item.videos.length > 0 && (
+                  <div className="item-videos-display">
+                    {item.videos.map((vid, j) => (
+                      <iframe 
+                        key={j} 
+                        src={vid.url} 
+                        width={vid.width} 
+                        height={vid.height}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        title={`Video ${j + 1}`}
+                        style={{ margin: '5px' }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
       case 'drawing':
         const safeDrawingContent = content && typeof content === 'object' 
           ? content 
@@ -2711,6 +3367,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
@@ -2788,6 +3445,7 @@ const Block = ({
               <option value="paragraph">Paragraph</option>
               <option value="heading">Heading</option>
               <option value="list">List</option>
+              <option value="checkbox">Checkbox</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
               <option value="equation">Equation</option>
