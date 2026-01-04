@@ -570,7 +570,7 @@ export default function MarkdownEditor() {
                 const latex = eqDiv.getAttribute('data-latex');
                 const placeholder = `___EQUATION_${Date.now()}_${Math.random()}___`;
                 extractedText = extractedText.replace(eqDiv.outerHTML, placeholder);
-                extractedText = extractedText.replace(placeholder, `[eq]${latex}[/eq]`);
+                extractedText = extractedText.replace(placeholder, `[eq]${latex}[/eq]\n`);
               });
               
               // Extract line spacing divs
