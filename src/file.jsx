@@ -527,20 +527,66 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     if (selectedBlocks.length === 0) return;
     
     const newBlocks = [...blocks];
-    const selectedIndices = selectedBlocks.map(id => blocks.findIndex(b => b.id === id)).sort();
+    const selectedIndices = selectedBlocks.map(id => blocks.findIndex(b => b.id === id)).sort((a, b) => a - b);
     
+    // Check if movement is possible
     if (direction === 'up' && selectedIndices[0] === 0) return;
     if (direction === 'down' && selectedIndices[selectedIndices.length - 1] === blocks.length - 1) return;
     
-    const delta = direction === 'up' ? -1 : 1;
+    // Check if selected blocks are contiguous
+    const isContiguous = selectedIndices.every((index, i) => 
+      i === 0 || index === selectedIndices[i - 1] + 1
+    );
     
-    selectedIndices.forEach(index => {
-      const newIndex = index + delta;
-      [newBlocks[index], newBlocks[newIndex]] = [newBlocks[newIndex], newBlocks[index]];
-    });
+    if (isContiguous) {
+      // Move contiguous blocks as a group
+      const delta = direction === 'up' ? -1 : 1;
+      const startIndex = selectedIndices[0];
+      const endIndex = selectedIndices[selectedIndices.length - 1];
+      const selectedBlocksData = selectedIndices.map(index => newBlocks[index]);
+      
+      if (direction === 'up') {
+        // Remove selected blocks
+        newBlocks.splice(startIndex, selectedIndices.length);
+        // Insert them one position up
+        newBlocks.splice(startIndex - 1, 0, ...selectedBlocksData);
+      } else {
+        // Remove selected blocks
+        newBlocks.splice(startIndex, selectedIndices.length);
+        // Insert them one position down
+        newBlocks.splice(startIndex + 1, 0, ...selectedBlocksData);
+      }
+    } else {
+      // Move non-contiguous blocks individually
+      // Sort indices in reverse order for down movement to avoid index shifting issues
+      const sortedIndices = direction === 'up' 
+        ? selectedIndices.slice().sort((a, b) => a - b)
+        : selectedIndices.slice().sort((a, b) => b - a);
+      
+      sortedIndices.forEach(index => {
+        const newIndex = index + (direction === 'up' ? -1 : 1);
+        // Only swap if the target position is not also selected
+        if (!selectedIndices.includes(newIndex)) {
+          [newBlocks[index], newBlocks[newIndex]] = [newBlocks[newIndex], newBlocks[index]];
+        }
+      });
+    }
     
     setBlocks(newBlocks);
     updateFile(newBlocks);
+    
+    // Update selected block IDs to maintain selection after move
+    const newSelectedIndices = selectedIndices.map(index => {
+      if (isContiguous) {
+        return index + (direction === 'up' ? -1 : 1);
+      } else {
+        const newIndex = index + (direction === 'up' ? -1 : 1);
+        return selectedIndices.includes(newIndex) ? index : newIndex;
+      }
+    });
+    
+    const newSelectedBlocks = newSelectedIndices.map(index => newBlocks[index]?.id).filter(Boolean);
+    setSelectedBlocks(newSelectedBlocks);
   };
 
   const deleteSelectedBlocks = () => {
@@ -667,20 +713,119 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
     let migrated = false;
     let migratedBlock = { ...block };
     
+    // Fix corrupted content with numeric keys
+    const hasNumericKeys = (content) => {
+      return content && typeof content === 'object' && Object.keys(content).some(key => !isNaN(key));
+    };
+
     // Migrate old paragraph format to new string format
     if (block.type === 'paragraph' && typeof block.content === 'object' && block.content.text) {
       migratedBlock.content = block.content.text;
       migrated = true;
     }
     
-    // Migrate old heading format if it's just a string
-    if (block.type === 'heading' && typeof block.content === 'string') {
-      migratedBlock.content = {
-        text: block.content,
-        fontSize: 24,
-        color: '#000000'
-      };
-      migrated = true;
+    // Migrate old heading format or fix corrupted heading
+    if (block.type === 'heading') {
+      if (typeof block.content === 'string') {
+        migratedBlock.content = {
+          text: block.content,
+          fontSize: 24,
+          color: '#000000'
+        };
+        migrated = true;
+      } else if (hasNumericKeys(block.content)) {
+        // Fix corrupted heading by removing numeric keys, keep existing text
+        const cleanedContent = {};
+        Object.keys(block.content).forEach(key => {
+          if (isNaN(key)) { // Keep only non-numeric keys
+            cleanedContent[key] = block.content[key];
+          }
+        });
+        migratedBlock.content = {
+          text: cleanedContent.text || 'Heading',
+          fontSize: cleanedContent.fontSize || 24,
+          color: cleanedContent.color || '#000000'
+        };
+        migrated = true;
+      }
+    }
+
+    // Fix corrupted equation blocks
+    if (block.type === 'equation') {
+      if (typeof block.content === 'string') {
+        migratedBlock.content = {
+          latex: block.content
+        };
+        migrated = true;
+      } else if (hasNumericKeys(block.content)) {
+        // Fix corrupted equation by removing numeric keys, keep existing latex
+        const cleanedContent = {};
+        Object.keys(block.content).forEach(key => {
+          if (isNaN(key)) { // Keep only non-numeric keys
+            cleanedContent[key] = block.content[key];
+          }
+        });
+        migratedBlock.content = {
+          latex: cleanedContent.latex || 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}'
+        };
+        migrated = true;
+      }
+    }
+
+    // Fix corrupted image blocks
+    if (block.type === 'image') {
+      if (!block.content || typeof block.content !== 'object' || hasNumericKeys(block.content)) {
+        const cleanedContent = {};
+        if (block.content && typeof block.content === 'object') {
+          Object.keys(block.content).forEach(key => {
+            if (isNaN(key)) { // Keep only non-numeric keys
+              cleanedContent[key] = block.content[key];
+            }
+          });
+        }
+        migratedBlock.content = {
+          images: cleanedContent.images || []
+        };
+        migrated = true;
+      }
+    }
+
+    // Fix corrupted video blocks
+    if (block.type === 'video') {
+      if (!block.content || typeof block.content !== 'object' || hasNumericKeys(block.content)) {
+        const cleanedContent = {};
+        if (block.content && typeof block.content === 'object') {
+          Object.keys(block.content).forEach(key => {
+            if (isNaN(key)) { // Keep only non-numeric keys
+              cleanedContent[key] = block.content[key];
+            }
+          });
+        }
+        migratedBlock.content = {
+          videos: cleanedContent.videos || []
+        };
+        migrated = true;
+      }
+    }
+
+    // Ensure drawing blocks have proper structure
+    if (block.type === 'drawing') {
+      if (!block.content || typeof block.content !== 'object' || hasNumericKeys(block.content)) {
+        const cleanedContent = {};
+        if (block.content && typeof block.content === 'object') {
+          Object.keys(block.content).forEach(key => {
+            if (isNaN(key)) { // Keep only non-numeric keys
+              cleanedContent[key] = block.content[key];
+            }
+          });
+        }
+        migratedBlock.content = {
+          strokes: cleanedContent.strokes || [],
+          width: cleanedContent.width || 400,
+          height: cleanedContent.height || 300
+        };
+        migrated = true;
+      }
     }
     
     // Migrate old or corrupted list format
@@ -860,9 +1005,9 @@ const FileEditor = ({ selectedFile, setSelectedFile, folders, setFolders, curren
           
           // Show migration feedback
           if (migrationCount > 0) {
-            alert(`File imported successfully! ${migrationCount} blocks were automatically updated to the new format.`);
+            alert(`File imported successfully! ${migrationCount} blocks were automatically updated to the new format. To import same file again click clear!`);
           } else {
-            alert('File imported successfully!');
+            alert('File imported successfully! To import same file again click clear!');
           }
         } else {
           // It's a folder - migrate all files in the folder
@@ -1346,29 +1491,43 @@ const Block = ({
     }
     
     if (block.type === 'image') {
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { images: [] };
+      // Check for corrupted content with numeric keys
+      if (block.content && typeof block.content === 'object' && !('0' in block.content) && !Array.isArray(block.content)) {
+        return block.content;
+      }
+      return { images: [] };
     }
     if (block.type === 'video') {
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { videos: [] };
+      // Check for corrupted content with numeric keys
+      if (block.content && typeof block.content === 'object' && !('0' in block.content) && !Array.isArray(block.content)) {
+        return block.content;
+      }
+      return { videos: [] };
     }
     if (block.type === 'heading') {
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { text: block.content || 'Heading', fontSize: 24, color: '#000000' };
+      // Check for corrupted content with numeric keys
+      if (block.content && typeof block.content === 'object' && !('0' in block.content) && block.content.text) {
+        return block.content;
+      }
+      // If it's a string or corrupted, create proper structure
+      const textContent = typeof block.content === 'string' ? block.content : 'Heading';
+      return { text: textContent, fontSize: 24, color: '#000000' };
     }
     if (block.type === 'equation') {
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { latex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' };
+      // Check for corrupted content with numeric keys
+      if (block.content && typeof block.content === 'object' && !('0' in block.content) && block.content.latex) {
+        return block.content;
+      }
+      // If it's a string or corrupted, create proper structure
+      const latexContent = typeof block.content === 'string' ? block.content : 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}';
+      return { latex: latexContent };
     }
     if (block.type === 'drawing') {
-      return block.content && typeof block.content === 'object' 
-        ? block.content 
-        : { strokes: [], width: 400, height: 300 };
+      // Check for corrupted content with numeric keys
+      if (block.content && typeof block.content === 'object' && !('0' in block.content) && !Array.isArray(block.content)) {
+        return block.content;
+      }
+      return { strokes: [], width: 400, height: 300 };
     }
     if (block.type === 'checkbox') {
       if (!block.content) {
@@ -1421,6 +1580,63 @@ const Block = ({
   const ref = useRef(null);
 
   const dragRef = useRef(null);
+
+  // Add useEffect to detect and fix corrupted content
+  useEffect(() => {
+    const fixCorruptedContent = () => {
+      let needsUpdate = false;
+      let fixedContent = { ...content };
+
+      // Check if content has numeric keys (corrupted) and clean them up
+      if (content && typeof content === 'object' && Object.keys(content).some(key => !isNaN(key))) {
+        needsUpdate = true;
+        
+        // Remove all numeric keys while preserving other properties
+        const cleanedContent = {};
+        Object.keys(content).forEach(key => {
+          if (isNaN(key)) { // Keep only non-numeric keys
+            cleanedContent[key] = content[key];
+          }
+        });
+        
+        // Ensure proper structure based on block type
+        if (block.type === 'heading') {
+          fixedContent = {
+            text: cleanedContent.text || 'Heading',
+            fontSize: cleanedContent.fontSize || 24,
+            color: cleanedContent.color || '#000000'
+          };
+        } else if (block.type === 'equation') {
+          fixedContent = {
+            latex: cleanedContent.latex || 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}'
+          };
+        } else if (block.type === 'image') {
+          fixedContent = {
+            images: cleanedContent.images || []
+          };
+        } else if (block.type === 'video') {
+          fixedContent = {
+            videos: cleanedContent.videos || []
+          };
+        } else if (block.type === 'drawing') {
+          fixedContent = {
+            strokes: cleanedContent.strokes || [],
+            width: cleanedContent.width || 400,
+            height: cleanedContent.height || 300
+          };
+        } else {
+          fixedContent = cleanedContent;
+        }
+      }
+
+      if (needsUpdate) {
+        setContent(fixedContent);
+        updateBlock(block.id, fixedContent);
+      }
+    };
+
+    fixCorruptedContent();
+  }, [block.content, block.id, block.type, updateBlock]);
 
   const [{ isDragging }, drag, preview] = useDrag({
     type: ItemTypes.BLOCK,
@@ -2410,6 +2626,12 @@ const Block = ({
                         <img src={img.url} alt="" style={{ width: img.width, height: img.height }} />
                         <div className="image-controls">
                           <input
+                            type="text"
+                            value={img.originalUrl || img.url}
+                            onChange={(e) => updateImageInItem(i, j, 'url', e.target.value)}
+                            placeholder="Image URL"
+                          />
+                          <input
                             type="number"
                             value={img.width}
                             onChange={(e) => updateImageInItem(i, j, 'width', parseInt(e.target.value))}
@@ -2520,6 +2742,12 @@ const Block = ({
                       <div key={j} className="image-container">
                         <img src={img.url} alt="" style={{ width: img.width, height: img.height }} />
                         <div className="image-controls">
+                          <input
+                            type="text"
+                            value={img.originalUrl || img.url}
+                            onChange={(e) => updateImageInItem(i, j, 'url', e.target.value)}
+                            placeholder="Image URL"
+                          />
                           <input
                             type="number"
                             value={img.width}
@@ -3113,6 +3341,12 @@ const Block = ({
                         <img src={img.url} alt="" style={{ width: img.width, height: img.height }} />
                         <div className="image-controls">
                           <input
+                            type="text"
+                            value={img.originalUrl || img.url}
+                            onChange={(e) => updateImageInItem(i, j, 'url', e.target.value)}
+                            placeholder="Image URL"
+                          />
+                          <input
                             type="number"
                             value={img.width}
                             onChange={(e) => updateImageInItem(i, j, 'width', parseInt(e.target.value))}
@@ -3229,6 +3463,12 @@ const Block = ({
                       <div key={j} className="image-container">
                         <img src={img.url} alt="" style={{ width: img.width, height: img.height }} />
                         <div className="image-controls">
+                          <input
+                            type="text"
+                            value={img.originalUrl || img.url}
+                            onChange={(e) => updateImageInItem(i, j, 'url', e.target.value)}
+                            placeholder="Image URL"
+                          />
                           <input
                             type="number"
                             value={img.width}
