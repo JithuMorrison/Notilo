@@ -14,8 +14,16 @@ function App() {
   const toggleSection = () => {
     const section = currentSection
     setCurrentSection(prevSection => prevSection === 'notes' ? 'make' : 'notes');
-    if (section == 'make'){
-      setSelectedFile(null);
+    if (section === 'make' && selectedFile?.id) {
+      const savedData = localStorage.getItem('notesAppData');
+      if (!savedData) return;
+
+      const foldersFromStorage = JSON.parse(savedData);
+      const realFile = findFileById(foldersFromStorage, selectedFile.id);
+
+      if (realFile) {
+        setSelectedFile(realFile);
+      }
     }
   };
 
@@ -45,6 +53,21 @@ function App() {
       localStorage.setItem('notesAppData', JSON.stringify(folders));
     }
   }, [folders]);
+
+  const findFileById = (folders, fileId) => {
+    for (const folder of folders) {
+      if (folder.files) {
+        const file = folder.files.find(f => f.id === fileId);
+        if (file) return file;
+      }
+
+      if (folder.folders) {
+        const found = findFileById(folder.folders, fileId);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
 
   return (
     <div className="app">
