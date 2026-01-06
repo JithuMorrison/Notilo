@@ -7,6 +7,7 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+  const [folderTargetId, setFolderTargetId] = useState(null);
 
   const toggleFolder = (folderId) => {
     setExpandedFolders(prev => ({
@@ -23,9 +24,9 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
     setSelectedFile(file);
   };
 
-  const addFolder = (parentId, path) => {
+  const addFolder = (parentId) => {
     if (!newFolderName.trim()) return;
-    
+
     const newFolder = {
       id: uuidv4(),
       name: newFolderName,
@@ -33,29 +34,29 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
       files: []
     };
 
-    const updateFolders = (folders, parentId, currentPathIndex = 0) => {
+    const updateFolders = (folders) => {
       return folders.map(folder => {
-        if (folder.id === parentId || 
-            (currentPath.length > 0 && currentPath[currentPathIndex] === folder.id)) {
-          if (currentPath.length > 0 && currentPathIndex < currentPath.length - 1) {
-            return {
-              ...folder,
-              folders: updateFolders(folder.folders, parentId, currentPathIndex + 1)
-            };
-          }
+        // ✅ add ONLY to clicked folder
+        if (folder.id === parentId) {
           return {
             ...folder,
             folders: [...folder.folders, newFolder]
           };
         }
-        return {
-          ...folder,
-          folders: updateFolders(folder.folders, parentId, currentPathIndex)
-        };
+
+        // 🔁 recurse into subfolders
+        if (folder.folders?.length) {
+          return {
+            ...folder,
+            folders: updateFolders(folder.folders)
+          };
+        }
+
+        return folder;
       });
     };
 
-    setFolders(prevFolders => updateFolders(prevFolders, parentId));
+    setFolders(prev => updateFolders(prev));
     setNewFolderName('');
     setShowNewFolderInput(false);
     setExpandedFolders(prev => ({ ...prev, [parentId]: true }));
@@ -70,29 +71,29 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
       updatedAt: new Date().toISOString()
     };
 
-    const updateFolders = (folders, parentId, currentPathIndex = 0) => {
+    const updateFolders = (folders) => {
       return folders.map(folder => {
-        if (folder.id === parentId || 
-            (currentPath.length > 0 && currentPath[currentPathIndex] === folder.id)) {
-          if (currentPath.length > 0 && currentPathIndex < currentPath.length - 1) {
-            return {
-              ...folder,
-              folders: updateFolders(folder.folders, parentId, currentPathIndex + 1)
-            };
-          }
+        // ✅ ONLY add to the clicked folder
+        if (folder.id === parentId) {
           return {
             ...folder,
             files: [...folder.files, newFile]
           };
         }
-        return {
-          ...folder,
-          folders: updateFolders(folder.folders, parentId, currentPathIndex)
-        };
+
+        // 🔁 recurse into subfolders
+        if (folder.folders?.length) {
+          return {
+            ...folder,
+            folders: updateFolders(folder.folders)
+          };
+        }
+
+        return folder;
       });
     };
 
-    setFolders(prevFolders => updateFolders(prevFolders, parentId));
+    setFolders(prev => updateFolders(prev));
     setSelectedFile(newFile);
   };
 
@@ -208,6 +209,19 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
     });
   };
 
+  const findFileById = (folders, fileId) => {
+    for (const folder of folders) {
+      const file = folder.files?.find(f => f.id === fileId);
+      if (file) return file;
+
+      if (folder.folders?.length) {
+        const found = findFileById(folder.folders, fileId);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   return (
     <div className="folder-structure" onClick={closeContextMenu}>
       <div className="actions">
@@ -215,6 +229,9 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
           + New Note
         </button>
         <button onClick={() => {
+          setFolderTargetId(
+            currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'root'
+          );
           setShowNewFolderInput(true);
           setNewFolderName('');
         }}>
@@ -231,7 +248,7 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
             placeholder="Folder name"
             autoFocus
           />
-          <button onClick={() => addFolder(currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'root')}>
+          <button onClick={() => addFolder(folderTargetId)}>
             Create
           </button>
           <button onClick={() => setShowNewFolderInput(false)}>Cancel</button>
@@ -255,6 +272,7 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
                 Add File
               </button>
               <button onClick={() => {
+                setFolderTargetId(contextMenu.itemId);
                 setShowNewFolderInput(true);
                 setNewFolderName('');
                 closeContextMenu();
@@ -264,7 +282,7 @@ const FolderStructure = ({ folders, setFolders, selectedFile, setSelectedFile, c
             </>
           ) : (
             <button onClick={() => {
-              setSelectedFile(folders.flatMap(f => f.files).find(f => f.id === contextMenu.itemId));
+              setSelectedFile(findFileById(folders, contextMenu.itemId));
               closeContextMenu();
             }}>
               Open
