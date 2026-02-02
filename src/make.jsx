@@ -68,7 +68,7 @@ export default function MarkdownEditor() {
 
   // Clear all content and storage
   const clearAll = () => {
-    if (window.confirm('Are you sure you want to clear all content? This action cannot be undone.')) {
+    if (window.confirm('Are you sure you want to clear all content? This action cannot be undone')) {
       setMarkdown('');
       setElements([]);
       setHistory([]);
